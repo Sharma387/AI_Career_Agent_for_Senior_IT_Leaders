@@ -124,9 +124,9 @@ class ProfileService:
             ],
             "certifications": [
                 {"name": c.name, "issuer": c.issuer or "", "date_obtained": "", "expiry_date": ""}
-                for c in await db_session.execute(
+                for c in (await db_session.execute(
                     select(Certification).where(Certification.profile_id == profile.id)
-                )
+                )).scalars().all()
             ],
         }
         self.career_rag.ingest_profile(profile_data)
