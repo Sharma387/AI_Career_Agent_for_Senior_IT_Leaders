@@ -8,6 +8,7 @@ export interface User {
 
 export interface CareerProfile {
   id: number;
+  profile_id?: number;
   full_name: string;
   email: string;
   summary: string;
@@ -45,6 +46,7 @@ export interface Application {
   date_applied: string;
   last_updated: string;
   feedback_notes: string;
+  has_materials: boolean;
   job: JobPosting;
 }
 

@@ -3,9 +3,10 @@ import tempfile
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ApplicationStatus, get_db
+from app.db.models import Application, ApplicationStatus, get_db
 from app.db.models import User
 from app.api.auth import get_current_user
 from app.services.profile_service import ProfileService
@@ -45,6 +46,11 @@ class TrackApplicationRequest(BaseModel):
 class UpdateStatusRequest(BaseModel):
     new_status: str
     feedback: str | None = None
+
+
+class UpdateResumeRequest(BaseModel):
+    resume_text: str
+    cover_letter_text: str | None = None
 
 
 @router.post("/api/profile/upload-resume")
@@ -185,6 +191,58 @@ async def get_insights(
     return await tracking_service.get_insights(profile_id, db_session)
 
 
-@router.get("/api/health")
-async def health_check():
-    return {"status": "ok"}
+@router.get("/api/applications/{application_id}/materials")
+async def get_application_materials(
+    application_id: int,
+    db_session: AsyncSession = Depends(get_db),
+):
+    result = await db_session.execute(
+        select(Application).where(Application.id == application_id)
+    )
+    application = result.scalar_one_or_none()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    job_result = await db_session.execute(
+        select(Application.job.property.mapper.class_).where(
+            Application.job.property.mapper.class_.id == application.job_id
+        )
+    )
+    from app.db.models import JobPosting
+    job_result = await db_session.execute(
+        select(JobPosting).where(JobPosting.id == application.job_id)
+    )
+    job = job_result.scalar_one_or_none()
+
+    return {
+        "application_id": application.id,
+        "resume_version_text": application.resume_version_text or "",
+        "cover_letter_text": application.cover_letter_text or "",
+        "job_title": job.title if job else "",
+        "company": job.company if job else "",
+    }
+
+
+@router.put("/api/applications/{application_id}/materials")
+async def update_application_materials(
+    application_id: int,
+    request: UpdateResumeRequest,
+    db_session: AsyncSession = Depends(get_db),
+):
+    result = await db_session.execute(
+        select(Application).where(Application.id == application_id)
+    )
+    application = result.scalar_one_or_none()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    application.resume_version_text = request.resume_text
+    if request.cover_letter_text is not None:
+        application.cover_letter_text = request.cover_letter_text
+    await db_session.flush()
+
+    return {
+        "application_id": application.id,
+        "resume_version_text": application.resume_version_text,
+        "cover_letter_text": application.cover_letter_text or "",
+    }

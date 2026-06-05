@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import type { CareerProfile, Project } from '../types';
 
+const PROFILE_ID_KEY = 'career_agent_profile_id';
+
 const emptyProject: Project = {
   title: '',
   description: '',
@@ -16,6 +18,7 @@ const emptyProject: Project = {
 
 export function Profile() {
   const [profile, setProfile] = useState<CareerProfile | null>(null);
+  const [profileId, setProfileId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [showProjectForm, setShowProjectForm] = useState(false);
@@ -23,7 +26,20 @@ export function Profile() {
   const [techInput, setTechInput] = useState('');
 
   useEffect(() => {
-    setLoading(false);
+    const stored = localStorage.getItem(PROFILE_ID_KEY);
+    if (stored) {
+      const id = Number(stored);
+      setProfileId(id);
+      api.profile.get(id)
+        .then((res) => setProfile(res.data))
+        .catch(() => {
+          localStorage.removeItem(PROFILE_ID_KEY);
+          setProfileId(null);
+        })
+        .finally(() => setLoading(false));
+    } else {
+      setLoading(false);
+    }
   }, []);
 
   const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -32,7 +48,12 @@ export function Profile() {
     setUploading(true);
     try {
       const res = await api.profile.uploadResume(file);
-      setProfile(res.data);
+      const newProfileId = res.data.profile_id ?? res.data.id;
+      if (!newProfileId) throw new Error('No profile ID returned');
+      localStorage.setItem(PROFILE_ID_KEY, String(newProfileId));
+      setProfileId(newProfileId);
+      const profileRes = await api.profile.get(newProfileId);
+      setProfile(profileRes.data);
     } catch {
       alert('Failed to upload resume');
     } finally {
@@ -42,14 +63,16 @@ export function Profile() {
 
   const handleAddProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile) {
+    if (!profileId) {
       alert('Upload a resume first to create your profile');
       return;
     }
     try {
-      await api.profile.addProject(profile.id, project);
+      await api.profile.addProject(profileId, project);
       setProject({ ...emptyProject });
       setShowProjectForm(false);
+      const profileRes = await api.profile.get(profileId);
+      setProfile(profileRes.data);
       alert('Project added successfully');
     } catch {
       alert('Failed to add project');
@@ -76,16 +99,16 @@ export function Profile() {
       <h1 className="text-2xl font-bold">Your Profile</h1>
 
       <div className="card">
-        <h2 className="text-lg font-semibold mb-4">Resume</h2>
+        <h2 className="text-lg font-semibold mb-4">Base Resume</h2>
         {profile?.raw_resume_text ? (
           <div className="bg-gray-50 rounded-lg p-4 max-h-48 overflow-y-auto">
             <p className="text-sm text-gray-700 whitespace-pre-wrap">{profile.raw_resume_text}</p>
           </div>
         ) : (
-          <p className="text-gray-500 mb-4">No resume uploaded yet. Upload your resume to get started.</p>
+          <p className="text-gray-500 mb-4">No resume uploaded yet. Upload your base resume to get started.</p>
         )}
         <label className="btn-primary inline-block cursor-pointer">
-          {uploading ? 'Uploading...' : 'Upload Resume'}
+          {uploading ? 'Uploading...' : profile ? 'Replace Resume' : 'Upload Resume'}
           <input type="file" accept=".pdf,.doc,.docx,.txt" onChange={handleResumeUpload} className="hidden" />
         </label>
       </div>

@@ -81,7 +81,7 @@ export const api = {
       return client.post<MatchResult>(`/api/jobs/${jobId}/match?profile_id=${profileId}`);
     },
     generateMaterials(jobId: number, profileId: number) {
-      return client.post<{ cover_letter: string; resume: string }>(
+      return client.post<{ application_id: number; cover_letter: string; resume: string }>(
         `/api/jobs/${jobId}/generate-materials?profile_id=${profileId}`
       );
     },
@@ -109,6 +109,21 @@ export const api = {
     },
     getInsights(profileId: number) {
       return client.get(`/api/applications/${profileId}/insights`);
+    },
+    getMaterials(applicationId: number) {
+      return client.get<{
+        application_id: number;
+        resume_version_text: string;
+        cover_letter_text: string;
+        job_title: string;
+        company: string;
+      }>(`/api/applications/${applicationId}/materials`);
+    },
+    updateMaterials(applicationId: number, resumeText: string, coverLetterText?: string) {
+      return client.put(`/api/applications/${applicationId}/materials`, {
+        resume_text: resumeText,
+        cover_letter_text: coverLetterText,
+      });
     },
   },
 };

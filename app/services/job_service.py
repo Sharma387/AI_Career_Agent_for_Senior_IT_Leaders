@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models import JobPosting, MatchResult, CareerProfile, Project, Skill
+from app.db.models import Application, ApplicationStatus, JobPosting, MatchResult, CareerProfile, Project, Skill
 from app.rag.job_rag import JobRAG
 from app.rag.career_rag import CareerRAG
 from app.ingestion.job_parser import JobParser
@@ -192,7 +192,28 @@ class JobService:
         resume_text = self.resume_agent.generate_resume(career_chunks, job_chunks, job_data)
         cover_letter_text = self.resume_agent.generate_cover_letter(career_chunks, job_chunks, job_data)
 
+        app_result = await db_session.execute(
+            select(Application).where(
+                Application.job_id == job_id,
+                Application.profile_id == profile_id,
+            )
+        )
+        application = app_result.scalar_one_or_none()
+        if not application:
+            application = Application(
+                job_id=job_id,
+                profile_id=profile_id,
+                status=ApplicationStatus.applied,
+            )
+            db_session.add(application)
+            await db_session.flush()
+
+        application.resume_version_text = resume_text
+        application.cover_letter_text = cover_letter_text
+        await db_session.flush()
+
         return {
+            "application_id": application.id,
             "resume": resume_text,
             "cover_letter": cover_letter_text,
         }

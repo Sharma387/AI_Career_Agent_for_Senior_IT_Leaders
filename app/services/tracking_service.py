@@ -165,6 +165,7 @@ class TrackingService:
                 "date_applied": app.date_applied.isoformat() if app.date_applied else None,
                 "last_updated": app.last_updated.isoformat() if app.last_updated else None,
                 "feedback_notes": app.feedback_notes,
+                "has_materials": bool(app.resume_version_text or app.cover_letter_text),
                 "job": {
                     "id": job.id,
                     "title": job.title,
