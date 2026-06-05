@@ -4,7 +4,7 @@ import pandas as pd
 from io import BytesIO
 
 st.set_page_config(
-    page_title="AI Career Agent for Senior IT Leaders",
+    page_title="AI Career Agent",
     page_icon="💼",
     layout="wide",
     initial_sidebar_state="expanded",

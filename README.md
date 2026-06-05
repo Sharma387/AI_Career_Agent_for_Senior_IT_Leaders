@@ -1,4 +1,4 @@
-# AI Career Agent for Senior IT Leaders
+# AI_Career_Agent_for_Senior_IT_Leaders
 
 An AI-powered career intelligence system that uses RAG (Retrieval-Augmented Generation) to match senior IT leaders with job opportunities, generate tailored application materials, and provide career insights.
 
@@ -115,7 +115,7 @@ ai-career-agent/
 ### 1. Clone and Navigate
 
 ```bash
-cd "AI Career Agent for Senior IT Leaders"
+cd AI_Career_Agent_for_Senior_IT_Leaders
 ```
 
 ### 2. Create Virtual Environment
