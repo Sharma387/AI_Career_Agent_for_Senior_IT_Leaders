@@ -47,6 +47,23 @@ class ProfileService:
         await db_session.flush()
 
         for project in expanded.get("detailed_projects", []):
+            star_stories = project.get("star_stories", [])
+            star_text = ""
+            star_situation = ""
+            star_task = ""
+            star_action = ""
+            star_result = ""
+            if star_stories:
+                first = star_stories[0] if isinstance(star_stories, list) else star_stories
+                if isinstance(first, dict):
+                    star_situation = first.get("situation", "")
+                    star_task = first.get("task", "")
+                    star_action = first.get("action", "")
+                    star_result = first.get("result", "")
+                    star_text = str(first)
+                else:
+                    star_text = str(first)
+
             proj = Project(
                 profile_id=profile.id,
                 title=project.get("title", ""),
@@ -54,7 +71,10 @@ class ProfileService:
                 role=project.get("role", ""),
                 technologies=", ".join(project.get("technologies", [])),
                 impact=project.get("impact", ""),
-                star_stories="\n".join(project.get("star_stories", [])),
+                star_situation=star_situation,
+                star_task=star_task,
+                star_action=star_action,
+                star_result=star_result,
             )
             db_session.add(proj)
 
@@ -87,7 +107,10 @@ class ProfileService:
                     "role": p.get("role", ""),
                     "technologies": p.get("technologies", []),
                     "impact": p.get("impact", ""),
-                    "star_stories": "\n".join(p.get("star_stories", [])),
+                    "star_stories": "\n".join(
+                        str(s) if not isinstance(s, dict) else s.get("situation", "") + " " + s.get("task", "") + " " + s.get("action", "") + " " + s.get("result", "")
+                        for s in p.get("star_stories", [])
+                    ),
                 }
                 for p in expanded.get("detailed_projects", [])
             ],
