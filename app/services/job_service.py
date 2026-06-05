@@ -2,13 +2,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models import Application, ApplicationStatus, JobPosting, MatchResult, CareerProfile, Project, Skill
+from app.db.models import Application, ApplicationStatus, JobPosting, MatchResult, CareerProfile, Project, Skill, Skill as SkillModel
 from app.rag.job_rag import JobRAG
 from app.rag.career_rag import CareerRAG
 from app.ingestion.job_parser import JobParser
 from app.agents.job_matcher_agent import JobMatcherAgent
 from app.agents.resume_agent import ResumeAgent
 from app.agents.insight_agent import InsightAgent
+from app.services.document_service import (
+    render_resume_html,
+    render_cover_letter_html,
+    generate_resume_docx,
+    generate_cover_letter_docx,
+)
 
 
 class JobService:
@@ -166,6 +172,27 @@ class JobService:
         if not profile:
             return {}
 
+        projects_result = await db_session.execute(
+            select(Project).where(Project.profile_id == profile_id)
+        )
+        projects = projects_result.scalars().all()
+
+        skills_result = await db_session.execute(
+            select(SkillModel).where(SkillModel.profile_id == profile_id)
+        )
+        skills = skills_result.scalars().all()
+
+        certs_result = await db_session.execute(
+            select(CareerProfile.certifications.property.mapper.class_).where(
+                CareerProfile.certifications.property.mapper.class_.profile_id == profile_id
+            )
+        )
+        from app.db.models import Certification
+        certs_result = await db_session.execute(
+            select(Certification).where(Certification.profile_id == profile_id)
+        )
+        certs = certs_result.scalars().all()
+
         career_chunks = self.career_rag.get_all_chunks()
 
         job_rag_data = {
@@ -192,6 +219,43 @@ class JobService:
         resume_text = self.resume_agent.generate_resume(career_chunks, job_chunks, job_data)
         cover_letter_text = self.resume_agent.generate_cover_letter(career_chunks, job_chunks, job_data)
 
+        profile_structured = {
+            "full_name": profile.full_name,
+            "email": profile.email or "",
+            "summary": profile.summary or "",
+            "resume_text": profile.raw_resume_text or resume_text,
+            "projects": [
+                {
+                    "title": p.title,
+                    "description": p.description or "",
+                    "role": p.role or "",
+                    "technologies": p.technologies or "",
+                    "impact": p.impact or "",
+                }
+                for p in projects
+            ],
+            "skills": {},
+            "certifications": [
+                {"name": c.name, "issuer": c.issuer or ""}
+                for c in certs
+            ],
+        }
+
+        for skill in skills:
+            cat = skill.category or "General"
+            if cat not in profile_structured["skills"]:
+                profile_structured["skills"][cat] = []
+            profile_structured["skills"][cat].append(skill.name)
+
+        job_structured = {
+            "title": job.title,
+            "company": job.company,
+            "seniority_level": job.seniority_level,
+        }
+
+        resume_html = render_resume_html(profile_structured, job_structured)
+        cover_letter_html = render_cover_letter_html(profile_structured, job_structured, cover_letter_text)
+
         app_result = await db_session.execute(
             select(Application).where(
                 Application.job_id == job_id,
@@ -216,6 +280,8 @@ class JobService:
             "application_id": application.id,
             "resume": resume_text,
             "cover_letter": cover_letter_text,
+            "resume_html": resume_html,
+            "cover_letter_html": cover_letter_html,
         }
 
     async def get_all_jobs(self, db_session: AsyncSession) -> list:

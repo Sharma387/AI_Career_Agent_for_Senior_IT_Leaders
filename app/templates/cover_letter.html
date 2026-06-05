@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cover Letter - {{ candidate_name }}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Calibri, Arial, sans-serif; color: #2d2d2d; line-height: 1.6; font-size: 11pt; }
+  .page { max-width: 210mm; margin: 0 auto; padding: 20mm 25mm; }
+  .header { margin-bottom: 24px; }
+  .header h1 { font-size: 18pt; color: #1a5276; font-weight: 700; }
+  .contact { font-size: 10pt; color: #555; margin-top: 4px; }
+  .date { font-size: 10pt; color: #555; margin-bottom: 20px; }
+  .recipient { font-size: 10.5pt; margin-bottom: 20px; }
+  .body-text { font-size: 11pt; margin-bottom: 14px; text-align: justify; }
+  .closing { margin-top: 24px; }
+  .closing .sign { font-size: 11pt; margin-top: 20px; }
+  @media print { .page { padding: 20mm; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <h1>{{ candidate_name }}</h1>
+    <div class="contact">
+      {% if email %}{{ email }}{% endif %}
+      {% if phone %} | {{ phone }}{% endif %}
+      {% if location %} | {{ location }}{% endif %}
+    </div>
+  </div>
+
+  <div class="date">{{ date }}</div>
+
+  {% if recipient_name %}
+  <div class="recipient">
+    {{ recipient_name }}<br>
+    {% if recipient_title %}{{ recipient_title }}<br>{% endif %}
+    {{ company_name }}<br>
+    {% if company_address %}{{ company_address }}{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="body-text">Dear {{ recipient_name | default('Hiring Manager', true) }},</div>
+
+  {% for paragraph in body_paragraphs %}
+  <div class="body-text">{{ paragraph }}</div>
+  {% endfor %}
+
+  <div class="closing">
+    <div class="body-text">Thank you for considering my application. I welcome the opportunity to discuss how my experience and leadership capabilities align with {{ company_name }}'s objectives.</div>
+    <div class="body-text">Yours sincerely,</div>
+    <div class="sign">{{ candidate_name }}</div>
+  </div>
+</div>
+</body>
+</html>

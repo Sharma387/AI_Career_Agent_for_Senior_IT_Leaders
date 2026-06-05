@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ candidate_name }} - Resume</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Calibri, Arial, sans-serif; color: #2d2d2d; line-height: 1.5; font-size: 11pt; }
+  .page { max-width: 210mm; margin: 0 auto; padding: 20mm 18mm; }
+  .header { border-bottom: 3px solid #1a5276; padding-bottom: 12px; margin-bottom: 18px; }
+  .header h1 { font-size: 22pt; color: #1a5276; font-weight: 700; letter-spacing: 0.5px; }
+  .header .subtitle { font-size: 11pt; color: #555; margin-top: 4px; }
+  .contact { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px; font-size: 9.5pt; color: #444; }
+  .contact span { display: inline-flex; align-items: center; gap: 4px; }
+  .section { margin-bottom: 16px; }
+  .section h2 { font-size: 12pt; color: #1a5276; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 10px; }
+  .summary { font-size: 10.5pt; color: #333; }
+  .experience-item { margin-bottom: 14px; }
+  .experience-item .role-header { display: flex; justify-content: space-between; align-items: baseline; }
+  .experience-item .job-title { font-weight: 600; font-size: 11pt; }
+  .experience-item .company { color: #1a5276; font-size: 10.5pt; }
+  .experience-item .dates { font-size: 9.5pt; color: #777; white-space: nowrap; }
+  .experience-item ul { margin-top: 4px; padding-left: 18px; }
+  .experience-item li { font-size: 10.5pt; margin-bottom: 3px; }
+  .skills-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px 20px; }
+  .skill-category { font-size: 10pt; }
+  .skill-category strong { color: #1a5276; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+  @media print { body { font-size: 10pt; } .page { padding: 15mm; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <h1>{{ candidate_name }}</h1>
+    {% if headline %}<div class="subtitle">{{ headline }}</div>{% endif %}
+    <div class="contact">
+      {% if email %}<span>&#9993; {{ email }}</span>{% endif %}
+      {% if phone %}<span>&#9742; {{ phone }}</span>{% endif %}
+      {% if location %}<span>&#9906; {{ location }}</span>{% endif %}
+      {% if linkedin %}<span>&#128279; {{ linkedin }}</span>{% endif %}
+    </div>
+  </div>
+
+  {% if summary %}
+  <div class="section">
+    <h2>Professional Summary</h2>
+    <div class="summary">{{ summary }}</div>
+  </div>
+  {% endif %}
+
+  {% if experience %}
+  <div class="section">
+    <h2>Experience</h2>
+    {% for job in experience %}
+    <div class="experience-item">
+      <div class="role-header">
+        <div>
+          <span class="job-title">{{ job.title }}</span>
+          {% if job.company %} <span class="company">— {{ job.company }}</span>{% endif %}
+          {% if job.location %} <span class="company">, {{ job.location }}</span>{% endif %}
+        </div>
+        {% if job.dates %}<span class="dates">{{ job.dates }}</span>{% endif %}
+      </div>
+      {% if job.description %}<p style="font-size:10pt; margin-top:3px;">{{ job.description }}</p>{% endif %}
+      {% if job.bullets %}
+      <ul>
+        {% for bullet in job.bullets %}
+        <li>{{ bullet }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if projects %}
+  <div class="section">
+    <h2>Key Projects</h2>
+    {% for project in projects %}
+    <div class="experience-item">
+      <div class="role-header">
+        <span class="job-title">{{ project.title }}</span>
+        {% if project.role %}<span class="company">{{ project.role }}</span>{% endif %}
+      </div>
+      {% if project.description %}<p style="font-size:10pt; margin-top:3px;">{{ project.description }}</p>{% endif %}
+      {% if project.technologies %}<p style="font-size:9.5pt; color:#555; margin-top:2px;"><strong>Tech:</strong> {{ project.technologies }}</p>{% endif %}
+      {% if project.impact %}<p style="font-size:10pt; margin-top:2px;"><strong>Impact:</strong> {{ project.impact }}</p>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if skills %}
+  <div class="section">
+    <h2>Skills</h2>
+    <div class="skills-grid">
+      {% for category, skill_list in skills.items() %}
+      <div class="skill-category">
+        <strong>{{ category }}:</strong> {{ skill_list | join(', ') }}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if education %}
+  <div class="section">
+    <h2>Education</h2>
+    {% for edu in education %}
+    <div class="experience-item">
+      <div class="role-header">
+        <span class="job-title">{{ edu.degree }}</span>
+        {% if edu.institution %}<span class="company">{{ edu.institution }}</span>{% endif %}
+        {% if edu.year %}<span class="dates">{{ edu.year }}</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if certifications %}
+  <div class="section">
+    <h2>Certifications</h2>
+    <ul style="padding-left: 18px;">
+      {% for cert in certifications %}
+      <li style="font-size:10pt;">{{ cert.name }}{% if cert.issuer %} — {{ cert.issuer }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+</body>
+</html>

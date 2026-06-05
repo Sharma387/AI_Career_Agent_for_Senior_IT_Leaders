@@ -23,6 +23,7 @@ export function Applications() {
   const [editResume, setEditResume] = useState('');
   const [editCoverLetter, setEditCoverLetter] = useState('');
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<'resume' | 'cover_letter'>('resume');
 
   useEffect(() => {
     Promise.all([api.applications.list(PROFILE_ID), api.applications.getStats(PROFILE_ID)])
@@ -53,6 +54,7 @@ export function Applications() {
       setEditResume(res.data.resume_version_text);
       setEditCoverLetter(res.data.cover_letter_text);
       setEditing(false);
+      setActiveTab('resume');
     } catch {
       alert('No materials found for this application');
     } finally {
@@ -152,15 +154,15 @@ export function Applications() {
 
       {viewingMaterials && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6">
+          <div className="bg-white rounded-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold">
-                Materials for {viewingMaterials.job_title} @ {viewingMaterials.company}
+                Materials: {viewingMaterials.job_title} @ {viewingMaterials.company}
               </h2>
               <div className="flex items-center gap-2">
                 {!editing && (
                   <button onClick={() => setEditing(true)} className="btn-secondary text-sm">
-                    Edit
+                    Edit Text
                   </button>
                 )}
                 <button onClick={() => setViewingMaterials(null)} className="text-gray-500 hover:text-gray-700 text-xl">
@@ -169,9 +171,31 @@ export function Applications() {
               </div>
             </div>
 
-            <div className="space-y-6">
+            <div className="flex gap-2 mb-4 border-b">
+              <button
+                onClick={() => setActiveTab('resume')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'resume'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Resume
+              </button>
+              <button
+                onClick={() => setActiveTab('cover_letter')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'cover_letter'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Cover Letter
+              </button>
+            </div>
+
+            {activeTab === 'resume' ? (
               <div>
-                <h3 className="font-semibold mb-2">Tailored Resume</h3>
                 {editing ? (
                   <textarea
                     value={editResume}
@@ -180,14 +204,32 @@ export function Applications() {
                     rows={15}
                   />
                 ) : (
-                  <div className="bg-gray-50 rounded-lg p-4 whitespace-pre-wrap text-sm max-h-64 overflow-y-auto">
-                    {viewingMaterials.resume_version_text || 'No resume generated yet'}
+                  <div
+                    className="bg-white rounded-lg border p-6 max-h-96 overflow-y-auto"
+                    dangerouslySetInnerHTML={{ __html: viewingMaterials.resume_version_text ? `<div>${viewingMaterials.resume_version_text}</div>` : '<p class="text-gray-500">No resume generated yet</p>' }}
+                  />
+                )}
+                {!editing && (
+                  <div className="flex gap-2 mt-4">
+                    <a
+                      href={api.applications.downloadResumeHtml(viewingMaterials.application_id)}
+                      download
+                      className="btn-secondary text-sm"
+                    >
+                      Download HTML
+                    </a>
+                    <a
+                      href={api.applications.downloadResumeDocx(viewingMaterials.application_id)}
+                      download
+                      className="btn-primary text-sm"
+                    >
+                      Download Word (.docx)
+                    </a>
                   </div>
                 )}
               </div>
-
+            ) : (
               <div>
-                <h3 className="font-semibold mb-2">Cover Letter</h3>
                 {editing ? (
                   <textarea
                     value={editCoverLetter}
@@ -196,40 +238,42 @@ export function Applications() {
                     rows={10}
                   />
                 ) : (
-                  <div className="bg-gray-50 rounded-lg p-4 whitespace-pre-wrap text-sm max-h-48 overflow-y-auto">
-                    {viewingMaterials.cover_letter_text || 'No cover letter generated yet'}
+                  <div
+                    className="bg-white rounded-lg border p-6 max-h-96 overflow-y-auto"
+                    dangerouslySetInnerHTML={{ __html: viewingMaterials.cover_letter_text ? `<div>${viewingMaterials.cover_letter_text}</div>` : '<p class="text-gray-500">No cover letter generated yet</p>' }}
+                  />
+                )}
+                {!editing && (
+                  <div className="flex gap-2 mt-4">
+                    <a
+                      href={api.applications.downloadCoverLetterHtml(viewingMaterials.application_id)}
+                      download
+                      className="btn-secondary text-sm"
+                    >
+                      Download HTML
+                    </a>
+                    <a
+                      href={api.applications.downloadCoverLetterDocx(viewingMaterials.application_id)}
+                      download
+                      className="btn-primary text-sm"
+                    >
+                      Download Word (.docx)
+                    </a>
                   </div>
                 )}
               </div>
+            )}
 
-              {editing && (
-                <div className="flex justify-end gap-2">
-                  <button onClick={() => { setEditing(false); setEditResume(viewingMaterials.resume_version_text); setEditCoverLetter(viewingMaterials.cover_letter_text); }} className="btn-secondary">
-                    Cancel
-                  </button>
-                  <button onClick={handleSaveMaterials} disabled={saving} className="btn-primary disabled:opacity-50">
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
-              )}
-
-              {!editing && (
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => navigator.clipboard.writeText(viewingMaterials.resume_version_text)}
-                    className="btn-secondary text-sm"
-                  >
-                    Copy Resume
-                  </button>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(viewingMaterials.cover_letter_text)}
-                    className="btn-secondary text-sm"
-                  >
-                    Copy Cover Letter
-                  </button>
-                </div>
-              )}
-            </div>
+            {editing && (
+              <div className="flex justify-end gap-2 mt-4">
+                <button onClick={() => { setEditing(false); setEditResume(viewingMaterials.resume_version_text); setEditCoverLetter(viewingMaterials.cover_letter_text); }} className="btn-secondary">
+                  Cancel
+                </button>
+                <button onClick={handleSaveMaterials} disabled={saving} className="btn-primary disabled:opacity-50">
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

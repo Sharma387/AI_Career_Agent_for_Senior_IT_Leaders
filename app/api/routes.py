@@ -1,17 +1,25 @@
 import os
 import tempfile
+from io import BytesIO
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Application, ApplicationStatus, get_db
+from app.db.models import Application, ApplicationStatus, CareerProfile, JobPosting, Project, Skill, Certification, get_db
 from app.db.models import User
 from app.api.auth import get_current_user
 from app.services.profile_service import ProfileService
 from app.services.job_service import JobService
 from app.services.tracking_service import TrackingService
+from app.services.document_service import (
+    render_resume_html,
+    render_cover_letter_html,
+    generate_resume_docx,
+    generate_cover_letter_docx,
+)
 
 router = APIRouter()
 
@@ -246,3 +254,173 @@ async def update_application_materials(
         "resume_version_text": application.resume_version_text,
         "cover_letter_text": application.cover_letter_text or "",
     }
+
+
+async def _get_profile_structured(profile_id: int, db_session: AsyncSession) -> dict:
+    profile_result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == profile_id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
+        return {}
+
+    projects_result = await db_session.execute(
+        select(Project).where(Project.profile_id == profile_id)
+    )
+    projects = projects_result.scalars().all()
+
+    skills_result = await db_session.execute(
+        select(Skill).where(Skill.profile_id == profile_id)
+    )
+    skills = skills_result.scalars().all()
+
+    certs_result = await db_session.execute(
+        select(Certification).where(Certification.profile_id == profile_id)
+    )
+    certs = certs_result.scalars().all()
+
+    skills_dict = {}
+    for s in skills:
+        cat = s.category or "General"
+        if cat not in skills_dict:
+            skills_dict[cat] = []
+        skills_dict[cat].append(s.name)
+
+    return {
+        "full_name": profile.full_name,
+        "email": profile.email or "",
+        "summary": profile.summary or "",
+        "resume_text": profile.raw_resume_text or "",
+        "projects": [
+            {
+                "title": p.title,
+                "description": p.description or "",
+                "role": p.role or "",
+                "technologies": p.technologies or "",
+                "impact": p.impact or "",
+            }
+            for p in projects
+        ],
+        "skills": skills_dict,
+        "certifications": [{"name": c.name, "issuer": c.issuer or ""} for c in certs],
+    }
+
+
+@router.get("/api/applications/{application_id}/resume/html")
+async def download_resume_html(
+    application_id: int,
+    db_session: AsyncSession = Depends(get_db),
+):
+    result = await db_session.execute(
+        select(Application).where(Application.id == application_id)
+    )
+    application = result.scalar_one_or_none()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    job_result = await db_session.execute(
+        select(JobPosting).where(JobPosting.id == application.job_id)
+    )
+    job = job_result.scalar_one_or_none()
+
+    profile_data = await _get_profile_structured(application.profile_id, db_session)
+    job_data = {"title": job.title, "company": job.company} if job else {}
+
+    resume_text = application.resume_version_text or profile_data.get("resume_text", "")
+    profile_data["resume_text"] = resume_text
+
+    html = render_resume_html(profile_data, job_data)
+    return StreamingResponse(
+        BytesIO(html.encode()),
+        media_type="text/html",
+        headers={"Content-Disposition": f"attachment; filename=resume_{application_id}.html"},
+    )
+
+
+@router.get("/api/applications/{application_id}/cover-letter/html")
+async def download_cover_letter_html(
+    application_id: int,
+    db_session: AsyncSession = Depends(get_db),
+):
+    result = await db_session.execute(
+        select(Application).where(Application.id == application_id)
+    )
+    application = result.scalar_one_or_none()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    job_result = await db_session.execute(
+        select(JobPosting).where(JobPosting.id == application.job_id)
+    )
+    job = job_result.scalar_one_or_none()
+
+    profile_data = await _get_profile_structured(application.profile_id, db_session)
+    job_data = {"title": job.title, "company": job.company} if job else {}
+
+    cover_letter_text = application.cover_letter_text or ""
+    html = render_cover_letter_html(profile_data, job_data, cover_letter_text)
+    return StreamingResponse(
+        BytesIO(html.encode()),
+        media_type="text/html",
+        headers={"Content-Disposition": f"attachment; filename=cover_letter_{application_id}.html"},
+    )
+
+
+@router.get("/api/applications/{application_id}/resume/docx")
+async def download_resume_docx(
+    application_id: int,
+    db_session: AsyncSession = Depends(get_db),
+):
+    result = await db_session.execute(
+        select(Application).where(Application.id == application_id)
+    )
+    application = result.scalar_one_or_none()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    job_result = await db_session.execute(
+        select(JobPosting).where(JobPosting.id == application.job_id)
+    )
+    job = job_result.scalar_one_or_none()
+
+    profile_data = await _get_profile_structured(application.profile_id, db_session)
+    job_data = {"title": job.title, "company": job.company} if job else {}
+
+    resume_text = application.resume_version_text or profile_data.get("resume_text", "")
+    profile_data["resume_text"] = resume_text
+
+    docx_bytes = generate_resume_docx(profile_data, job_data)
+    return StreamingResponse(
+        BytesIO(docx_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename=resume_{application_id}.docx"},
+    )
+
+
+@router.get("/api/applications/{application_id}/cover-letter/docx")
+async def download_cover_letter_docx(
+    application_id: int,
+    db_session: AsyncSession = Depends(get_db),
+):
+    result = await db_session.execute(
+        select(Application).where(Application.id == application_id)
+    )
+    application = result.scalar_one_or_none()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    job_result = await db_session.execute(
+        select(JobPosting).where(JobPosting.id == application.job_id)
+    )
+    job = job_result.scalar_one_or_none()
+
+    profile_data = await _get_profile_structured(application.profile_id, db_session)
+    job_data = {"title": job.title, "company": job.company} if job else {}
+
+    cover_letter_text = application.cover_letter_text or ""
+    docx_bytes = generate_cover_letter_docx(profile_data, job_data, cover_letter_text)
+    return StreamingResponse(
+        BytesIO(docx_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename=cover_letter_{application_id}.docx"},
+    )

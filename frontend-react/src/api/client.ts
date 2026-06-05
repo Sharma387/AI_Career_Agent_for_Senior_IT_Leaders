@@ -81,7 +81,7 @@ export const api = {
       return client.post<MatchResult>(`/api/jobs/${jobId}/match?profile_id=${profileId}`);
     },
     generateMaterials(jobId: number, profileId: number) {
-      return client.post<{ application_id: number; cover_letter: string; resume: string }>(
+      return client.post<{ application_id: number; cover_letter: string; resume: string; resume_html: string; cover_letter_html: string }>(
         `/api/jobs/${jobId}/generate-materials?profile_id=${profileId}`
       );
     },
@@ -124,6 +124,18 @@ export const api = {
         resume_text: resumeText,
         cover_letter_text: coverLetterText,
       });
+    },
+    downloadResumeHtml(applicationId: number) {
+      return `/api/applications/${applicationId}/resume/html`;
+    },
+    downloadCoverLetterHtml(applicationId: number) {
+      return `/api/applications/${applicationId}/cover-letter/html`;
+    },
+    downloadResumeDocx(applicationId: number) {
+      return `/api/applications/${applicationId}/resume/docx`;
+    },
+    downloadCoverLetterDocx(applicationId: number) {
+      return `/api/applications/${applicationId}/cover-letter/docx`;
     },
   },
 };

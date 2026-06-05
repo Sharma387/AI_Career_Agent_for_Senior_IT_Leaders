@@ -12,8 +12,15 @@ export function Jobs() {
   const [matching, setMatching] = useState<number | null>(null);
   const [newJobText, setNewJobText] = useState('');
   const [adding, setAdding] = useState(false);
-  const [generatedMaterials, setGeneratedMaterials] = useState<{ application_id: number; resume: string; cover_letter: string } | null>(null);
+  const [generatedMaterials, setGeneratedMaterials] = useState<{
+    application_id: number;
+    resume: string;
+    cover_letter: string;
+    resume_html: string;
+    cover_letter_html: string;
+  } | null>(null);
   const [generating, setGenerating] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<'resume' | 'cover_letter'>('resume');
 
   useEffect(() => {
     api.jobs.list()
@@ -41,6 +48,7 @@ export function Jobs() {
     try {
       const res = await api.jobs.generateMaterials(jobId, PROFILE_ID);
       setGeneratedMaterials(res.data);
+      setActiveTab('resume');
     } catch {
       alert('Failed to generate materials');
     } finally {
@@ -190,38 +198,76 @@ export function Jobs() {
             </Link>
           </div>
 
-          <div className="space-y-4">
-            <div>
-              <h3 className="font-medium mb-2">Tailored Resume</h3>
-              <div className="bg-white rounded-lg p-4 max-h-48 overflow-y-auto text-sm whitespace-pre-wrap">
-                {generatedMaterials.resume}
-              </div>
-              <button
-                onClick={() => navigator.clipboard.writeText(generatedMaterials.resume)}
-                className="btn-secondary text-sm mt-2"
-              >
-                Copy Resume
-              </button>
-            </div>
-
-            <div>
-              <h3 className="font-medium mb-2">Cover Letter</h3>
-              <div className="bg-white rounded-lg p-4 max-h-48 overflow-y-auto text-sm whitespace-pre-wrap">
-                {generatedMaterials.cover_letter}
-              </div>
-              <button
-                onClick={() => navigator.clipboard.writeText(generatedMaterials.cover_letter)}
-                className="btn-secondary text-sm mt-2"
-              >
-                Copy Cover Letter
-              </button>
-            </div>
+          <div className="flex gap-2 mb-4 border-b">
+            <button
+              onClick={() => setActiveTab('resume')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'resume'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Resume
+            </button>
+            <button
+              onClick={() => setActiveTab('cover_letter')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'cover_letter'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Cover Letter
+            </button>
           </div>
 
-          <p className="mt-4 text-sm text-gray-600">
-            Materials saved to your application. You can edit them from the{' '}
-            <Link to="/applications" className="text-blue-600 hover:underline">Applications</Link> page.
-          </p>
+          {activeTab === 'resume' ? (
+            <div>
+              <div
+                className="bg-white rounded-lg p-6 border max-h-96 overflow-y-auto"
+                dangerouslySetInnerHTML={{ __html: generatedMaterials.resume_html }}
+              />
+              <div className="flex gap-2 mt-4">
+                <a
+                  href={api.applications.downloadResumeHtml(generatedMaterials.application_id)}
+                  download
+                  className="btn-secondary text-sm"
+                >
+                  Download HTML
+                </a>
+                <a
+                  href={api.applications.downloadResumeDocx(generatedMaterials.application_id)}
+                  download
+                  className="btn-primary text-sm"
+                >
+                  Download Word (.docx)
+                </a>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div
+                className="bg-white rounded-lg p-6 border max-h-96 overflow-y-auto"
+                dangerouslySetInnerHTML={{ __html: generatedMaterials.cover_letter_html }}
+              />
+              <div className="flex gap-2 mt-4">
+                <a
+                  href={api.applications.downloadCoverLetterHtml(generatedMaterials.application_id)}
+                  download
+                  className="btn-secondary text-sm"
+                >
+                  Download HTML
+                </a>
+                <a
+                  href={api.applications.downloadCoverLetterDocx(generatedMaterials.application_id)}
+                  download
+                  className="btn-primary text-sm"
+                >
+                  Download Word (.docx)
+                </a>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
