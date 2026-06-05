@@ -10,6 +10,9 @@ import type {
   LoginPayload,
   RegisterPayload,
   AuthResponse,
+  Skill,
+  InterviewStrategy,
+  SecretQuestion,
 } from '../types';
 
 const client = axios.create({
@@ -52,6 +55,25 @@ export const api = {
     me() {
       return client.get<User>('/api/auth/me');
     },
+    setSecretQuestions(questions: { question: string; answer: string }[]) {
+      return client.post('/api/auth/set-secret-questions', { questions });
+    },
+    getSecretQuestions(email: string) {
+      return client.get<{ questions: SecretQuestion[] }>(`/api/auth/secret-questions/${email}`);
+    },
+    forgotPassword(email: string, answers: { question: string; answer: string }[], newPassword: string) {
+      return client.post('/api/auth/forgot-password', {
+        email,
+        answers,
+        new_password: newPassword,
+      });
+    },
+    changePassword(currentPassword: string, newPassword: string) {
+      return client.post('/api/auth/change-password', {
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
+    },
   },
 
   profile: {
@@ -65,8 +87,20 @@ export const api = {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
     },
+    update(profileId: number, data: Partial<CareerProfile>) {
+      return client.put<CareerProfile>(`/api/profile/${profileId}`, data);
+    },
+    updateSkills(profileId: number, skills: { name: string; category: string; proficiency?: string }[]) {
+      return client.put<Skill[]>(`/api/profile/${profileId}/skills`, { skills });
+    },
     addProject(profileId: number, project: Project) {
       return client.post<Project>(`/api/profile/${profileId}/project`, project);
+    },
+    updateProject(profileId: number, projectId: number, data: Partial<Project>) {
+      return client.put<Project>(`/api/profile/${profileId}/projects/${projectId}`, data);
+    },
+    deleteProject(profileId: number, projectId: number) {
+      return client.delete(`/api/profile/${profileId}/projects/${projectId}`);
     },
     downloadResumeHtml(profileId: number) {
       return `/api/profile/${profileId}/resume/html`;
@@ -86,10 +120,48 @@ export const api = {
     match(jobId: number, profileId: number) {
       return client.post<MatchResult>(`/api/jobs/${jobId}/match?profile_id=${profileId}`);
     },
+    matchEnhanced(jobId: number, profileId: number) {
+      return client.post<MatchResult & { score_breakdown: any; improvement_recommendations: any[] }>(
+        `/api/jobs/${jobId}/match-enhanced?profile_id=${profileId}`
+      );
+    },
     generateMaterials(jobId: number, profileId: number) {
       return client.post<{ application_id: number; cover_letter: string; resume: string; resume_html: string; cover_letter_html: string }>(
         `/api/jobs/${jobId}/generate-materials?profile_id=${profileId}`
       );
+    },
+    getInterviewStrategy(jobId: number, profileId: number) {
+      return client.get<InterviewStrategy>(`/api/jobs/${jobId}/interview-strategy/${profileId}`);
+    },
+  },
+
+  match: {
+    getPrevious(jobId: number, profileId: number) {
+      return client.get<{
+        match_id: number;
+        match_score: number;
+        strengths: string[];
+        gaps: string[];
+        evidence: any[];
+        explanation: string;
+        recommendation: string;
+        created_at: string;
+        articulations: Array<{
+          id: number;
+          gap_text: string;
+          has_skill: boolean;
+          evidence: string;
+        }>;
+      } | null>(`/api/match/${jobId}/${profileId}`);
+    },
+    saveArticulations(matchId: number, articulations: Array<{ gap_text: string; has_skill: boolean; evidence: string }>) {
+      return client.post(`/api/match/${matchId}/articulations`, articulations);
+    },
+  },
+
+  llm: {
+    getInfo() {
+      return client.get<{ provider: string; model: string; embedding_model: string }>('/api/llm/info');
     },
   },
 

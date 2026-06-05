@@ -6,14 +6,43 @@ export interface User {
   created_at: string;
 }
 
+export interface Skill {
+  id: number;
+  name: string;
+  category: string;
+  proficiency?: string;
+}
+
+export interface Certification {
+  name: string;
+  issuer?: string;
+  date_obtained?: string;
+  expiry_date?: string;
+}
+
 export interface CareerProfile {
   id: number;
   profile_id?: number;
   full_name: string;
   email: string;
+  phone?: string;
+  linkedin_url?: string;
   summary: string;
   raw_resume_text: string;
+  formatted_resume_html?: string;
+  interests?: string[];
+  education?: Education[];
+  skills: Skill[];
+  certifications: Certification[];
+  projects: Project[];
   created_at: string;
+  updated_at?: string;
+}
+
+export interface Education {
+  degree: string;
+  institution: string;
+  year: string;
 }
 
 export interface Project {
@@ -50,14 +79,58 @@ export interface Application {
   job: JobPosting;
 }
 
+export interface ScoreComponent {
+  score: number;
+  max: number;
+  weight: number;
+  weighted: number;
+}
+
+export interface MatchScoreBreakdown {
+  skills_match: ScoreComponent;
+  experience_match: ScoreComponent;
+  industry_relevance: ScoreComponent;
+  leadership_signals: ScoreComponent;
+}
+
+export interface ImprovementRecommendation {
+  area: string;
+  gap: string;
+  recommendation: string;
+  priority: 'high' | 'medium' | 'low';
+  estimated_impact: string;
+}
+
 export interface MatchResult {
   match_id: string;
   match_score: number;
+  score_breakdown?: MatchScoreBreakdown;
   strengths: string[];
   gaps: string[];
   evidence: Array<string | { career_chunk: string; relevance: string }>;
   explanation: string;
   recommendation: string;
+  improvement_recommendations?: ImprovementRecommendation[];
+}
+
+export interface InterviewStrategy {
+  job_id: number;
+  profile_id: number;
+  match_score: number;
+  strengths: string[];
+  gaps: string[];
+  explanation: string;
+  recommendation: string;
+  key_themes: string[];
+  potential_questions: string[];
+  talking_points: string[];
+  areas_to_prepare: string[];
+  improvement_recommendations?: ImprovementRecommendation[];
+}
+
+export interface SecretQuestion {
+  id: number;
+  question: string;
 }
 
 export interface ApplicationStats {

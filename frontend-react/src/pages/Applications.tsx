@@ -125,32 +125,30 @@ export function Applications() {
                   )}
                 </div>
                 <div className="flex items-center gap-3">
-                  {app.has_materials && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleViewMaterials(app.application_id)}
-                        disabled={loadingMaterials === app.application_id}
-                        className="text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50"
-                      >
-                        {loadingMaterials === app.application_id ? 'Loading...' : 'View / Edit'}
-                      </button>
-                      <span className="text-gray-300">|</span>
-                      <a
-                        href={api.applications.downloadResumeHtml(app.application_id)}
-                        download
-                        className="text-sm text-gray-500 hover:text-gray-700"
-                      >
-                        Resume
-                      </a>
-                      <a
-                        href={api.applications.downloadCoverLetterHtml(app.application_id)}
-                        download
-                        className="text-sm text-gray-500 hover:text-gray-700"
-                      >
-                        Cover Letter
-                      </a>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleViewMaterials(app.application_id)}
+                      disabled={loadingMaterials === app.application_id}
+                      className="text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                    >
+                      {loadingMaterials === app.application_id ? 'Loading...' : 'View / Edit'}
+                    </button>
+                    <span className="text-gray-300">|</span>
+                    <a
+                      href={api.applications.downloadResumeHtml(app.application_id)}
+                      download
+                      className="text-sm text-gray-500 hover:text-gray-700"
+                    >
+                      Resume
+                    </a>
+                    <a
+                      href={api.applications.downloadCoverLetterHtml(app.application_id)}
+                      download
+                      className="text-sm text-gray-500 hover:text-gray-700"
+                    >
+                      Cover Letter
+                    </a>
+                  </div>
                   <select
                     value={app.status}
                     onChange={(e) => handleStatusUpdate(app.application_id, e.target.value)}

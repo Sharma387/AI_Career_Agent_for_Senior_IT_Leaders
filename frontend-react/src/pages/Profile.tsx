@@ -8,8 +8,13 @@ interface ProfileData {
   id: number;
   full_name: string;
   email: string;
+  phone?: string;
+  linkedin_url?: string;
   summary: string;
   raw_resume_text: string;
+  interests?: string[];
+  education?: Array<{ degree: string; institution: string; year: string }>;
+  certifications?: Array<{ name: string; issuer?: string }>;
   created_at: string;
 }
 
@@ -17,6 +22,7 @@ interface SkillData {
   id: number;
   name: string;
   category: string;
+  proficiency?: string;
 }
 
 const emptyProject: Project = {
@@ -44,6 +50,46 @@ export function Profile() {
   const [editingSummary, setEditingSummary] = useState(false);
   const [summaryText, setSummaryText] = useState('');
 
+  // Basic info editing
+  const [editingBasicInfo, setEditingBasicInfo] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [linkedinUrl, setLinkedinUrl] = useState('');
+
+  // Skills editing
+  const [editingSkills, setEditingSkills] = useState(false);
+  const [newSkillName, setNewSkillName] = useState('');
+  const [newSkillCategory, setNewSkillCategory] = useState('');
+  const [editedSkills, setEditedSkills] = useState<SkillData[]>([]);
+
+  // Project editing
+  const [editingProjectId, setEditingProjectId] = useState<number | null>(null);
+  const [editingProject, setEditingProject] = useState<any>(null);
+  const [editProjectTechInput, setEditProjectTechInput] = useState('');
+
+  // Certifications
+  const [editingCerts, setEditingCerts] = useState(false);
+  const [certs, setCerts] = useState<Array<{ name: string; issuer?: string }>>([]);
+  const [newCertName, setNewCertName] = useState('');
+  const [newCertIssuer, setNewCertIssuer] = useState('');
+
+  // Interests
+  const [editingInterests, setEditingInterests] = useState(false);
+  const [interestsText, setInterestsText] = useState('');
+
+  // Change password
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  // Secret questions
+  const [secretQuestions, setSecretQuestions] = useState<Array<{ question: string; answer: string }>>([
+    { question: '', answer: '' },
+    { question: '', answer: '' },
+    { question: '', answer: '' },
+  ]);
+  const [savingQuestions, setSavingQuestions] = useState(false);
+
   const loadProfile = async (id: number) => {
     try {
       const res = await api.profile.get(id);
@@ -51,6 +97,10 @@ export function Profile() {
       if (data.profile) {
         setProfile(data.profile);
         setSummaryText(data.profile.summary || '');
+        setPhone(data.profile.phone || '');
+        setLinkedinUrl(data.profile.linkedin_url || '');
+        setInterestsText((data.profile.interests || []).join(', '));
+        setCerts(data.profile.certifications || []);
       }
       setProjects(data.projects || []);
       setSkills(data.skills || []);
@@ -89,6 +139,51 @@ export function Profile() {
     }
   };
 
+  const handleSaveSummary = async () => {
+    if (!profileId) return;
+    try {
+      await api.profile.update(profileId, { summary: summaryText } as any);
+      setProfile(prev => prev ? { ...prev, summary: summaryText } : prev);
+      setEditingSummary(false);
+    } catch {
+      alert('Failed to save summary');
+    }
+  };
+
+  const handleSaveBasicInfo = async () => {
+    if (!profileId) return;
+    try {
+      await api.profile.update(profileId, { phone, linkedin_url: linkedinUrl } as any);
+      setProfile(prev => prev ? { ...prev, phone, linkedin_url: linkedinUrl } : prev);
+      setEditingBasicInfo(false);
+    } catch {
+      alert('Failed to save basic info');
+    }
+  };
+
+  const handleSaveSkills = async () => {
+    if (!profileId) return;
+    try {
+      await api.profile.updateSkills(profileId, editedSkills.map(s => ({ name: s.name, category: s.category, proficiency: s.proficiency })));
+      setSkills(editedSkills);
+      setEditingSkills(false);
+    } catch {
+      alert('Failed to save skills');
+    }
+  };
+
+  const handleAddSkill = () => {
+    if (!newSkillName.trim()) return;
+    const newSkill: SkillData = { id: Date.now(), name: newSkillName.trim(), category: newSkillCategory.trim() || 'General', proficiency: 'Intermediate' };
+    setEditedSkills(prev => [...prev, newSkill]);
+    setNewSkillName('');
+    setNewSkillCategory('');
+  };
+
+  const handleDeleteSkill = (id: number) => {
+    setEditedSkills(prev => prev.filter(s => s.id !== id));
+  };
+
   const handleAddProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profileId) {
@@ -106,10 +201,101 @@ export function Profile() {
     }
   };
 
+  const handleUpdateProject = async (projectId: number) => {
+    if (!profileId || !editingProject) return;
+    try {
+      await api.profile.updateProject(profileId, projectId, editingProject);
+      setEditingProjectId(null);
+      setEditingProject(null);
+      await loadProfile(profileId);
+    } catch {
+      alert('Failed to update project');
+    }
+  };
+
+  const handleDeleteProject = async (projectId: number) => {
+    if (!profileId) return;
+    if (!confirm('Delete this project?')) return;
+    try {
+      await api.profile.deleteProject(profileId, projectId);
+      await loadProfile(profileId);
+    } catch {
+      alert('Failed to delete project');
+    }
+  };
+
   const addTech = () => {
     if (techInput.trim() && !project.technologies.includes(techInput.trim())) {
       setProject({ ...project, technologies: [...project.technologies, techInput.trim()] });
       setTechInput('');
+    }
+  };
+
+  const addEditTech = () => {
+    if (editProjectTechInput.trim() && !editingProject.technologies.includes(editProjectTechInput.trim())) {
+      setEditingProject({ ...editingProject, technologies: [...editingProject.technologies, editProjectTechInput.trim()] });
+      setEditProjectTechInput('');
+    }
+  };
+
+  const handleSaveCerts = async () => {
+    if (!profileId) return;
+    try {
+      await api.profile.update(profileId, { certifications: certs } as any);
+      setProfile(prev => prev ? { ...prev, certifications: certs } : prev);
+      setEditingCerts(false);
+    } catch {
+      alert('Failed to save certifications');
+    }
+  };
+
+  const handleSaveInterests = async () => {
+    if (!profileId) return;
+    const interestsArr = interestsText.split(',').map(s => s.trim()).filter(Boolean);
+    try {
+      await api.profile.update(profileId, { interests: interestsArr } as any);
+      setProfile(prev => prev ? { ...prev, interests: interestsArr } : prev);
+      setEditingInterests(false);
+    } catch {
+      alert('Failed to save interests');
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      alert('Passwords do not match');
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      await api.auth.changePassword(currentPassword, newPassword);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      alert('Password changed successfully');
+    } catch {
+      alert('Failed to change password');
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  const handleSaveSecretQuestions = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const valid = secretQuestions.filter(q => q.question.trim() && q.answer.trim());
+    if (valid.length < 3) {
+      alert('Please fill in all 3 question/answer pairs');
+      return;
+    }
+    setSavingQuestions(true);
+    try {
+      await api.auth.setSecretQuestions(valid);
+      alert('Secret questions saved');
+    } catch {
+      alert('Failed to save secret questions');
+    } finally {
+      setSavingQuestions(false);
     }
   };
 
@@ -163,12 +349,44 @@ export function Profile() {
         </div>
       </div>
 
+      {/* Basic Info Section */}
+      {profile && (
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Basic Info</h2>
+            <button onClick={() => { setEditingBasicInfo(!editingBasicInfo); setPhone(profile.phone || ''); setLinkedinUrl(profile.linkedin_url || ''); }} className="text-sm text-blue-600 hover:text-blue-700">
+              {editingBasicInfo ? 'Cancel' : 'Edit'}
+            </button>
+          </div>
+          {editingBasicInfo ? (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Phone</label>
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} className="input-field w-full" placeholder="+1 555-0100" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">LinkedIn URL</label>
+                <input value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} className="input-field w-full" placeholder="https://linkedin.com/in/yourname" />
+              </div>
+              <button onClick={handleSaveBasicInfo} className="btn-primary text-sm">Save</button>
+            </div>
+          ) : (
+            <div className="space-y-2 text-sm">
+              <p><span className="font-medium">Name:</span> {profile.full_name}</p>
+              <p><span className="font-medium">Email:</span> {profile.email}</p>
+              <p><span className="font-medium">Phone:</span> {profile.phone || '—'}</p>
+              <p><span className="font-medium">LinkedIn:</span> {profile.linkedin_url || '—'}</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Summary Section */}
       {profile && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Profile Summary</h2>
-            <button onClick={() => setEditingSummary(!editingSummary)} className="text-sm text-blue-600 hover:text-blue-700">
+            <button onClick={() => { setEditingSummary(!editingSummary); setSummaryText(profile.summary || ''); }} className="text-sm text-blue-600 hover:text-blue-700">
               {editingSummary ? 'Cancel' : 'Edit'}
             </button>
           </div>
@@ -180,7 +398,7 @@ export function Profile() {
                 className="input-field w-full"
                 rows={4}
               />
-              <button className="btn-primary text-sm mt-2">Save Summary</button>
+              <button onClick={handleSaveSummary} className="btn-primary text-sm mt-2">Save Summary</button>
             </div>
           ) : (
             <p className="text-gray-700 whitespace-pre-wrap">{profile.summary || 'No summary yet.'}</p>
@@ -189,9 +407,42 @@ export function Profile() {
       )}
 
       {/* Skills Section */}
-      {skills.length > 0 && (
-        <div className="card">
-          <h2 className="text-lg font-semibold mb-4">Skills</h2>
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Skills ({skills.length})</h2>
+          <button
+            onClick={() => {
+              if (editingSkills) {
+                setEditingSkills(false);
+              } else {
+                setEditedSkills([...skills]);
+                setEditingSkills(true);
+              }
+            }}
+            className="text-sm text-blue-600 hover:text-blue-700"
+          >
+            {editingSkills ? 'Cancel' : 'Edit'}
+          </button>
+        </div>
+        {editingSkills ? (
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {editedSkills.map((skill) => (
+                <span key={skill.id} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm flex items-center gap-1">
+                  {skill.name}
+                  {skill.category && <span className="text-blue-500 ml-1">({skill.category})</span>}
+                  <button onClick={() => handleDeleteSkill(skill.id)} className="ml-1 text-red-500 hover:text-red-700 font-bold">×</button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input value={newSkillName} onChange={(e) => setNewSkillName(e.target.value)} className="input-field flex-1" placeholder="Skill name" onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddSkill())} />
+              <input value={newSkillCategory} onChange={(e) => setNewSkillCategory(e.target.value)} className="input-field flex-1" placeholder="Category" onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddSkill())} />
+              <button onClick={handleAddSkill} className="btn-secondary text-sm">Add</button>
+            </div>
+            <button onClick={handleSaveSkills} className="btn-primary text-sm">Save Skills</button>
+          </div>
+        ) : (
           <div className="flex flex-wrap gap-2">
             {skills.map((skill) => (
               <span key={skill.id} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm">
@@ -200,8 +451,8 @@ export function Profile() {
               </span>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Projects Section */}
       <div className="card">
@@ -214,14 +465,64 @@ export function Profile() {
 
         {projects.length > 0 && (
           <div className="space-y-4 mb-4">
-            {projects.map((p, i) => (
-              <div key={p.id || i} className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-medium">{p.title}</h3>
-                {p.role && <p className="text-sm text-gray-600">{p.role}</p>}
-                {p.description && <p className="text-sm text-gray-700 mt-1">{p.description}</p>}
-                {p.technologies && <p className="text-xs text-gray-500 mt-1">Tech: {p.technologies}</p>}
-                {p.impact && <p className="text-sm text-green-700 mt-1">Impact: {p.impact}</p>}
-              </div>
+            {projects.map((p) => (
+              editingProjectId === p.id ? (
+                <div key={p.id} className="bg-yellow-50 rounded-lg p-4 border border-yellow-200 space-y-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Title</label>
+                      <input value={editingProject.title} onChange={(e) => setEditingProject({ ...editingProject, title: e.target.value })} className="input-field w-full" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Role</label>
+                      <input value={editingProject.role} onChange={(e) => setEditingProject({ ...editingProject, role: e.target.value })} className="input-field w-full" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Description</label>
+                    <textarea value={editingProject.description} onChange={(e) => setEditingProject({ ...editingProject, description: e.target.value })} className="input-field w-full" rows={2} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Impact</label>
+                    <input value={editingProject.impact} onChange={(e) => setEditingProject({ ...editingProject, impact: e.target.value })} className="input-field w-full" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Technologies</label>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {editingProject.technologies.map((tech: string) => (
+                        <span key={tech} className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-sm flex items-center gap-1">
+                          {tech}
+                          <button type="button" onClick={() => setEditingProject({ ...editingProject, technologies: editingProject.technologies.filter((t: string) => t !== tech) })}>×</button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <input value={editProjectTechInput} onChange={(e) => setEditProjectTechInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addEditTech())} className="input-field flex-1" placeholder="Add technology" />
+                      <button type="button" onClick={addEditTech} className="btn-secondary text-sm">Add</button>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleUpdateProject(p.id)} className="btn-primary text-sm">Save</button>
+                    <button onClick={() => { setEditingProjectId(null); setEditingProject(null); }} className="btn-secondary text-sm">Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div key={p.id} className="bg-gray-50 rounded-lg p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h3 className="font-medium">{p.title}</h3>
+                      {p.role && <p className="text-sm text-gray-600">{p.role}</p>}
+                      {p.description && <p className="text-sm text-gray-700 mt-1">{p.description}</p>}
+                      {p.technologies && <p className="text-xs text-gray-500 mt-1">Tech: {p.technologies}</p>}
+                      {p.impact && <p className="text-sm text-green-700 mt-1">Impact: {p.impact}</p>}
+                    </div>
+                    <div className="flex gap-2 ml-2">
+                      <button onClick={() => { setEditingProjectId(p.id); setEditingProject({ ...p, technologies: Array.isArray(p.technologies) ? p.technologies : [] }); setEditProjectTechInput(''); }} className="text-sm text-blue-600 hover:text-blue-700">Edit</button>
+                      <button onClick={() => handleDeleteProject(p.id)} className="text-sm text-red-600 hover:text-red-700">Delete</button>
+                    </div>
+                  </div>
+                </div>
+              )
             ))}
           </div>
         )}
@@ -314,6 +615,140 @@ export function Profile() {
             <button type="submit" className="btn-primary">Save Project</button>
           </form>
         )}
+      </div>
+
+      {/* Certifications Section */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Certifications ({certs.length})</h2>
+          <button onClick={() => setEditingCerts(!editingCerts)} className="text-sm text-blue-600 hover:text-blue-700">
+            {editingCerts ? 'Cancel' : 'Edit'}
+          </button>
+        </div>
+        {editingCerts ? (
+          <div className="space-y-4">
+            {certs.map((cert, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input value={cert.name} onChange={(e) => { const updated = [...certs]; updated[i] = { ...updated[i], name: e.target.value }; setCerts(updated); }} className="input-field flex-1" placeholder="Certification name" />
+                <input value={cert.issuer || ''} onChange={(e) => { const updated = [...certs]; updated[i] = { ...updated[i], issuer: e.target.value }; setCerts(updated); }} className="input-field flex-1" placeholder="Issuer" />
+                <button onClick={() => setCerts(certs.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 font-bold">×</button>
+              </div>
+            ))}
+            <div className="flex gap-2">
+              <input value={newCertName} onChange={(e) => setNewCertName(e.target.value)} className="input-field flex-1" placeholder="New certification name" />
+              <input value={newCertIssuer} onChange={(e) => setNewCertIssuer(e.target.value)} className="input-field flex-1" placeholder="Issuer" />
+              <button onClick={() => { if (newCertName.trim()) { setCerts(prev => [...prev, { name: newCertName.trim(), issuer: newCertIssuer.trim() || undefined }]); setNewCertName(''); setNewCertIssuer(''); } }} className="btn-secondary text-sm">Add</button>
+            </div>
+            <button onClick={handleSaveCerts} className="btn-primary text-sm">Save Certifications</button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {certs.length === 0 ? (
+              <p className="text-gray-500 text-sm">No certifications added yet.</p>
+            ) : (
+              certs.map((cert, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  <span className="font-medium">{cert.name}</span>
+                  {cert.issuer && <span className="text-gray-500">— {cert.issuer}</span>}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Interests Section */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Interests</h2>
+          <button onClick={() => { setEditingInterests(!editingInterests); setInterestsText((profile?.interests || []).join(', ')); }} className="text-sm text-blue-600 hover:text-blue-700">
+            {editingInterests ? 'Cancel' : 'Edit'}
+          </button>
+        </div>
+        {editingInterests ? (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Interests (comma-separated)</label>
+              <input value={interestsText} onChange={(e) => setInterestsText(e.target.value)} className="input-field w-full" placeholder="AI, Cloud Architecture, DevOps, Leadership" />
+            </div>
+            <button onClick={handleSaveInterests} className="btn-primary text-sm">Save Interests</button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {(profile?.interests || []).length === 0 ? (
+              <p className="text-gray-500 text-sm">No interests added yet.</p>
+            ) : (
+              (profile?.interests || []).map((interest, i) => (
+                <span key={i} className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">{interest}</span>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Education Section */}
+      {profile?.education && profile.education.length > 0 && (
+        <div className="card">
+          <h2 className="text-lg font-semibold mb-4">Education</h2>
+          <div className="space-y-3">
+            {profile.education.map((edu, i) => (
+              <div key={i} className="bg-gray-50 rounded-lg p-3">
+                <p className="font-medium">{edu.degree}</p>
+                <p className="text-sm text-gray-600">{edu.institution}</p>
+                <p className="text-sm text-gray-500">{edu.year}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Change Password Section */}
+      <div className="card">
+        <h2 className="text-lg font-semibold mb-4">Change Password</h2>
+        <form onSubmit={handleChangePassword} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Current Password</label>
+            <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="input-field w-full" required />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">New Password</label>
+            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="input-field w-full" required minLength={6} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Confirm New Password</label>
+            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="input-field w-full" required minLength={6} />
+          </div>
+          <button type="submit" disabled={changingPassword} className="btn-primary disabled:opacity-50">
+            {changingPassword ? 'Changing...' : 'Change Password'}
+          </button>
+        </form>
+      </div>
+
+      {/* Secret Questions Section */}
+      <div className="card">
+        <h2 className="text-lg font-semibold mb-4">Security Questions</h2>
+        <p className="text-sm text-gray-600 mb-4">Set up 3 security questions for account recovery.</p>
+        <form onSubmit={handleSaveSecretQuestions} className="space-y-4">
+          {secretQuestions.map((q, i) => (
+            <div key={i} className="space-y-2">
+              <input
+                value={q.question}
+                onChange={(e) => { const updated = [...secretQuestions]; updated[i] = { ...updated[i], question: e.target.value }; setSecretQuestions(updated); }}
+                className="input-field w-full"
+                placeholder={`Question ${i + 1}`}
+              />
+              <input
+                value={q.answer}
+                onChange={(e) => { const updated = [...secretQuestions]; updated[i] = { ...updated[i], answer: e.target.value }; setSecretQuestions(updated); }}
+                className="input-field w-full"
+                placeholder={`Answer ${i + 1}`}
+              />
+            </div>
+          ))}
+          <button type="submit" disabled={savingQuestions} className="btn-primary disabled:opacity-50">
+            {savingQuestions ? 'Saving...' : 'Save Security Questions'}
+          </button>
+        </form>
       </div>
     </div>
   );

@@ -143,6 +143,7 @@ class JobService:
             gaps=match_result.get("gaps", []),
             evidence=match_result.get("evidence", []),
             explanation_text=match_result.get("explanation", ""),
+            recommendation=match_result.get("recommendation", "weak_match"),
         )
         db_session.add(record)
         await db_session.flush()
@@ -155,6 +156,192 @@ class JobService:
             "evidence": record.evidence,
             "explanation": record.explanation_text,
             "recommendation": match_result.get("recommendation", "weak_match"),
+        }
+
+    async def match_job_enhanced(self, job_id: int, profile_id: int, db_session: AsyncSession) -> dict:
+        base_result = await self.match_job(job_id, profile_id, db_session)
+
+        result = await db_session.execute(
+            select(CareerProfile).where(CareerProfile.id == profile_id)
+        )
+        profile = result.scalar_one_or_none()
+        if not profile:
+            return {**base_result, "score_breakdown": {}, "improvement_recommendations": [], "interview_strategy": {}}
+
+        job_result = await db_session.execute(
+            select(JobPosting).where(JobPosting.id == job_id)
+        )
+        job = job_result.scalar_one_or_none()
+
+        skills_result = await db_session.execute(
+            select(SkillModel).where(SkillModel.profile_id == profile_id)
+        )
+        skills = skills_result.scalars().all()
+        skill_names = [s.name for s in skills]
+        skill_categories = list(set(s.category for s in skills if s.category))
+
+        from app.db.models import Certification
+        certs_result = await db_session.execute(
+            select(Certification).where(Certification.profile_id == profile_id)
+        )
+        certs = certs_result.scalars().all()
+
+        projects_result = await db_session.execute(
+            select(Project).where(Project.profile_id == profile_id)
+        )
+        projects = projects_result.scalars().all()
+
+        job_skills = job.extracted_skills if job else []
+        job_requirements = job.requirements_text if job else ""
+
+        matched_skills = set(skill_names) & set(job_skills) if job_skills else set()
+        skills_score = min(100, round(len(matched_skills) / max(len(job_skills), 1) * 100)) if job_skills else 50
+        skills_weighted = round(skills_score * 0.30, 2)
+
+        seniority_map = {
+            "junior": 2, "mid": 5, "senior": 8, "lead": 10,
+            "director": 12, "vp": 15, "cto": 18, "c-level": 20, "executive": 20,
+        }
+        required_exp = 5
+        if job and job.seniority_level:
+            for level, yrs in seniority_map.items():
+                if level in job.seniority_level.lower():
+                    required_exp = yrs
+                    break
+        actual_exp = len(projects) * 2 + len(skills) * 0.5
+        experience_score = min(100, round(actual_exp / max(required_exp, 1) * 100))
+        experience_weighted = round(experience_score * 0.25, 2)
+
+        industry_score = min(100, 60 + len(certs) * 10 + (10 if profile.summary else 0))
+        industry_weighted = round(industry_score * 0.20, 2)
+
+        leadership_keywords = ["lead", "director", "vp", "cto", "architect", "principal", "head", "chief", "managed", "directed", "oversaw"]
+        leadership_count = sum(1 for kw in leadership_keywords if kw in (profile.summary or "").lower())
+        for p in projects:
+            leadership_count += sum(1 for kw in leadership_keywords if kw in (p.description or "").lower())
+            leadership_count += sum(1 for kw in leadership_keywords if kw in (p.role or "").lower())
+        leadership_score = min(100, 30 + leadership_count * 12)
+        leadership_weighted = round(leadership_score * 0.25, 2)
+
+        match_score = round(skills_weighted + experience_weighted + industry_weighted + leadership_weighted)
+
+        strengths = list(base_result.get("strengths", []))
+        gaps = list(base_result.get("gaps", []))
+        improvement_recommendations = []
+
+        if skills_score < 70:
+            missing = [s for s in (job_skills or []) if s not in skill_names]
+            if missing:
+                gaps.append(f"Missing skills: {', '.join(missing[:5])}")
+                improvement_recommendations.append({
+                    "area": "Skills",
+                    "gap": f"Proficiency in {', '.join(missing[:3])}",
+                    "recommendation": f"Consider obtaining certifications or hands-on experience in: {', '.join(missing[:3])}. Lead a project utilizing these technologies.",
+                    "priority": "high",
+                    "estimated_impact": f"+{100 - skills_score}% skills match",
+                })
+        else:
+            strengths.append(f"Strong skills alignment ({len(matched_skills)}/{len(job_skills)} required skills)")
+
+        if experience_score < 70:
+            gaps.append(f"Experience level below target ({required_exp}+ years expected)")
+            improvement_recommendations.append({
+                "area": "Experience",
+                "gap": f"Need {required_exp}+ years of relevant experience",
+                "recommendation": "Seek interim leadership roles, lead cross-functional initiatives, or take on advisory positions to build executive-level experience.",
+                "priority": "medium",
+                "estimated_impact": f"+{100 - experience_score}% experience score",
+            })
+        else:
+            strengths.append(f"Adequate experience ({len(projects)} projects, {len(skills)} skills demonstrated)")
+
+        if leadership_score < 60:
+            gaps.append("Limited leadership signals in profile")
+            improvement_recommendations.append({
+                "area": "Leadership",
+                "gap": "Executive leadership visibility",
+                "recommendation": "Publish thought leadership articles, speak at conferences, or take on VP/Director level advisory roles.",
+                "priority": "high",
+                "estimated_impact": f"+{100 - leadership_score}% leadership score",
+            })
+        else:
+            strengths.append("Strong leadership signals")
+
+        if industry_score < 60:
+            gaps.append("Could strengthen industry-specific positioning")
+            improvement_recommendations.append({
+                "area": "Industry Relevance",
+                "gap": "Industry-specific certifications",
+                "recommendation": "Obtain industry-recognized certifications and highlight domain-specific project experience.",
+                "priority": "medium",
+                "estimated_impact": f"+{100 - industry_score}% industry score",
+            })
+
+        if match_score >= 80:
+            recommendation = "strong_match"
+            explanation = "Profile strongly aligns with the target role. Proceed with application."
+        elif match_score >= 60:
+            recommendation = "moderate_match"
+            explanation = "Profile has good alignment with some gaps. Address key gaps before applying."
+        elif match_score >= 40:
+            recommendation = "partial_match"
+            explanation = "Profile has some relevant experience but significant gaps. Consider upskilling first."
+        else:
+            recommendation = "weak_match"
+            explanation = "Profile has limited alignment with the target role. Significant development needed."
+
+        key_themes = []
+        if profile.summary:
+            key_themes.append("Lead with executive summary highlighting leadership journey")
+        if matched_skills:
+            key_themes.append(f"Emphasize expertise in {', '.join(list(matched_skills)[:3])}")
+        if projects:
+            key_themes.append("Reference specific quantified achievements from projects")
+
+        potential_questions = [
+            "Tell me about your most significant career achievement and its impact.",
+            "How do you approach leading technical transformation in large organizations?",
+            "Describe a time you managed a cross-functional team through a major initiative.",
+            "How do you evaluate and adopt emerging technologies?",
+            "What is your leadership philosophy when building high-performance teams?",
+        ]
+
+        talking_points = []
+        for p in projects[:3]:
+            if p.impact:
+                talking_points.append(f"{p.title}: {p.impact}")
+            elif p.description:
+                talking_points.append(f"{p.title}: {p.description[:100]}")
+
+        areas_to_prepare = []
+        for g in gaps[:3]:
+            areas_to_prepare.append(f"Prepare examples addressing: {g}")
+        for s in list(matched_skills)[:3]:
+            areas_to_prepare.append(f"Deep dive into {s} experience and results")
+
+        interview_strategy = {
+            "key_themes": key_themes,
+            "potential_questions": potential_questions,
+            "talking_points": talking_points,
+            "areas_to_prepare": areas_to_prepare,
+        }
+
+        return {
+            "match_id": base_result.get("match_id"),
+            "match_score": match_score,
+            "score_breakdown": {
+                "skills_match": {"score": skills_score, "max": 100, "weight": 0.30, "weighted": skills_weighted},
+                "experience_match": {"score": experience_score, "max": 100, "weight": 0.25, "weighted": experience_weighted},
+                "industry_relevance": {"score": industry_score, "max": 100, "weight": 0.20, "weighted": industry_weighted},
+                "leadership_signals": {"score": leadership_score, "max": 100, "weight": 0.25, "weighted": leadership_weighted},
+            },
+            "strengths": strengths,
+            "gaps": gaps,
+            "evidence": base_result.get("evidence", []),
+            "explanation": explanation,
+            "recommendation": recommendation,
+            "improvement_recommendations": improvement_recommendations,
+            "interview_strategy": interview_strategy,
         }
 
     async def generate_application_materials(self, job_id: int, profile_id: int, db_session: AsyncSession) -> dict:

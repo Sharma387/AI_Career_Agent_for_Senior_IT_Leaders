@@ -36,6 +36,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     profile = relationship("CareerProfile", back_populates="user", uselist=False)
+    secret_questions = relationship("SecretQuestion", back_populates="user", cascade="all, delete-orphan")
 
 
 class ApplicationStatus(str, PyEnum):
@@ -62,6 +63,8 @@ class CareerProfile(Base):
     linkedin_url = Column(String(512), nullable=True)
     raw_resume_text = Column(Text, nullable=True)
     formatted_resume_html = Column(Text, nullable=True)
+    interests = Column(JSON, nullable=True)
+    education = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -70,6 +73,7 @@ class CareerProfile(Base):
     certifications = relationship("Certification", back_populates="profile", cascade="all, delete-orphan")
     applications = relationship("Application", back_populates="profile", cascade="all, delete-orphan")
     match_results = relationship("MatchResult", back_populates="profile", cascade="all, delete-orphan")
+    articulations = relationship("SkillArticulation", back_populates="profile", cascade="all, delete-orphan")
     user = relationship("User", back_populates="profile")
 
 
@@ -170,10 +174,40 @@ class MatchResult(Base):
     gaps = Column(JSON, nullable=True)
     evidence = Column(JSON, nullable=True)
     explanation_text = Column(Text, nullable=True)
+    recommendation = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     job = relationship("JobPosting", back_populates="match_results")
     profile = relationship("CareerProfile", back_populates="match_results")
+    articulations = relationship("SkillArticulation", back_populates="match_result", cascade="all, delete-orphan")
+
+
+class SkillArticulation(Base):
+    __tablename__ = "skill_articulations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    match_result_id = Column(Integer, ForeignKey("match_results.id", ondelete="CASCADE"), nullable=False, index=True)
+    profile_id = Column(Integer, ForeignKey("career_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    gap_text = Column(Text, nullable=False)
+    has_skill = Column(Boolean, nullable=False, default=False)
+    evidence = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    match_result = relationship("MatchResult", back_populates="articulations")
+    profile = relationship("CareerProfile", back_populates="articulations")
+
+
+class SecretQuestion(Base):
+    __tablename__ = "secret_questions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    question = Column(String(500), nullable=False)
+    answer_hash = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship("User", back_populates="secret_questions")
 
 
 engine = create_async_engine(settings.DATABASE_URL, echo=settings.DEBUG)
