@@ -20,14 +20,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loadUser = useCallback(async () => {
     try {
-      const response = await api.profile.get();
-      setUser({
-        id: response.data.id,
-        email: response.data.email,
-        full_name: response.data.full_name,
-        is_active: true,
-        created_at: response.data.created_at,
-      });
+      const response = await api.auth.me();
+      setUser(response.data as User);
     } catch {
       setToken(null);
       setUser(null);
@@ -54,8 +48,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const register = async (email: string, password: string, fullName: string) => {
-    await api.auth.register({ email, password, full_name: fullName });
-    await login(email, password);
+    const response = await api.auth.register({ email, password, full_name: fullName });
+    const newToken = response.data.access_token;
+    localStorage.setItem('token', newToken);
+    setToken(newToken);
+    await loadUser();
   };
 
   const logout = () => {

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { api } from '../api/client';
 
+const PROFILE_ID = 1;
+
 export function InterviewPrep() {
   const [jobId, setJobId] = useState('');
-  const [materials, setMaterials] = useState<{ cover_letter: string; interview_prep: string } | null>(null);
+  const [materials, setMaterials] = useState<{ cover_letter: string; resume: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleGenerate = async (e: React.FormEvent) => {
@@ -12,7 +14,7 @@ export function InterviewPrep() {
     setLoading(true);
     setMaterials(null);
     try {
-      const res = await api.materials.generate(Number(jobId));
+      const res = await api.jobs.generateMaterials(Number(jobId), PROFILE_ID);
       setMaterials(res.data);
     } catch {
       alert('Failed to generate materials. Make sure the job ID is valid.');
@@ -61,12 +63,12 @@ export function InterviewPrep() {
           </div>
 
           <div className="card">
-            <h2 className="text-lg font-semibold mb-4">Interview Prep Notes</h2>
+            <h2 className="text-lg font-semibold mb-4">Tailored Resume</h2>
             <div className="bg-gray-50 rounded-lg p-4 whitespace-pre-wrap text-sm text-gray-700">
-              {materials.interview_prep}
+              {materials.resume}
             </div>
             <button
-              onClick={() => navigator.clipboard.writeText(materials.interview_prep)}
+              onClick={() => navigator.clipboard.writeText(materials.resume)}
               className="btn-secondary text-sm mt-3"
             >
               Copy to Clipboard

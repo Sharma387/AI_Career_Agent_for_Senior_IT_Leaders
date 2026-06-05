@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 
+const PROFILE_ID = 1;
+
 interface Insights {
   recommendations: string[];
   market_trends: string[];
@@ -12,7 +14,7 @@ export function Insights() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.insights.get()
+    api.applications.getInsights(PROFILE_ID)
       .then((res) => setInsights(res.data))
       .catch(() => null)
       .finally(() => setLoading(false));

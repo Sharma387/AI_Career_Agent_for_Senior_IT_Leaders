@@ -2,11 +2,15 @@ import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import type { JobPosting, MatchResult } from '../types';
 
+const PROFILE_ID = 1;
+
 export function Jobs() {
   const [jobs, setJobs] = useState<JobPosting[]>([]);
   const [loading, setLoading] = useState(true);
   const [matchResult, setMatchResult] = useState<MatchResult | null>(null);
   const [matching, setMatching] = useState<number | null>(null);
+  const [newJobText, setNewJobText] = useState('');
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     api.jobs.list()
@@ -19,12 +23,28 @@ export function Jobs() {
     setMatching(jobId);
     setMatchResult(null);
     try {
-      const res = await api.jobs.match(jobId);
+      const res = await api.jobs.match(jobId, PROFILE_ID);
       setMatchResult(res.data);
     } catch {
       alert('Failed to generate match');
     } finally {
       setMatching(null);
+    }
+  };
+
+  const handleAddJob = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newJobText.trim()) return;
+    setAdding(true);
+    try {
+      await api.jobs.add(newJobText);
+      setNewJobText('');
+      const res = await api.jobs.list();
+      setJobs(res.data);
+    } catch {
+      alert('Failed to add job');
+    } finally {
+      setAdding(false);
     }
   };
 
@@ -40,9 +60,26 @@ export function Jobs() {
     <div className="space-y-8">
       <h1 className="text-2xl font-bold">Job Opportunities</h1>
 
+      <div className="card">
+        <h2 className="text-lg font-semibold mb-4">Add Job Posting</h2>
+        <form onSubmit={handleAddJob} className="flex gap-4">
+          <textarea
+            value={newJobText}
+            onChange={(e) => setNewJobText(e.target.value)}
+            className="input-field flex-1"
+            rows={3}
+            placeholder="Paste job description here..."
+            required
+          />
+          <button type="submit" disabled={adding} className="btn-primary self-end whitespace-nowrap disabled:opacity-50">
+            {adding ? 'Adding...' : 'Add Job'}
+          </button>
+        </form>
+      </div>
+
       {jobs.length === 0 ? (
         <div className="card text-center py-12">
-          <p className="text-gray-500">No jobs available yet. Add job postings to get started.</p>
+          <p className="text-gray-500">No jobs available yet. Add a job posting above to get started.</p>
         </div>
       ) : (
         <div className="space-y-4">

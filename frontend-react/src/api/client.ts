@@ -41,79 +41,74 @@ client.interceptors.response.use(
 export const api = {
   auth: {
     login(payload: LoginPayload) {
-      const formData = new URLSearchParams();
-      formData.append('username', payload.email);
-      formData.append('password', payload.password);
-      return client.post<AuthResponse>('/api/auth/login', formData, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      return client.post<AuthResponse>('/api/auth/login', {
+        email: payload.email,
+        password: payload.password,
       });
     },
     register(payload: RegisterPayload) {
-      return client.post<User>('/api/auth/register', payload);
+      return client.post<AuthResponse>('/api/auth/register', payload);
+    },
+    me() {
+      return client.get<User>('/api/auth/me');
     },
   },
 
   profile: {
-    get() {
-      return client.get<CareerProfile>('/api/profile');
+    get(profileId: number) {
+      return client.get<CareerProfile>(`/api/profile/${profileId}`);
     },
     uploadResume(file: File) {
       const formData = new FormData();
       formData.append('file', file);
-      return client.post<CareerProfile>('/api/profile/resume', formData, {
+      return client.post<CareerProfile>('/api/profile/upload-resume', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
     },
-    addProject(project: Project) {
-      return client.post<Project>('/api/profile/projects', project);
+    addProject(profileId: number, project: Project) {
+      return client.post<Project>(`/api/profile/${profileId}/project`, project);
     },
   },
 
   jobs: {
-    add(job: Partial<JobPosting>) {
-      return client.post<JobPosting>('/api/jobs', job);
+    add(text: string, source?: string) {
+      return client.post<JobPosting>('/api/jobs/add', { text, source: source || 'manual' });
     },
-    list(params?: { seniority_level?: string; location?: string }) {
-      return client.get<JobPosting[]>('/api/jobs', { params });
+    list() {
+      return client.get<JobPosting[]>('/api/jobs');
     },
-    match(jobId: number) {
-      return client.post<MatchResult>(`/api/jobs/${jobId}/match`);
+    match(jobId: number, profileId: number) {
+      return client.post<MatchResult>(`/api/jobs/${jobId}/match?profile_id=${profileId}`);
     },
-  },
-
-  materials: {
-    generate(jobId: number) {
-      return client.post<{ cover_letter: string; interview_prep: string }>(
-        `/api/materials/generate`,
-        { job_id: jobId }
+    generateMaterials(jobId: number, profileId: number) {
+      return client.post<{ cover_letter: string; resume: string }>(
+        `/api/jobs/${jobId}/generate-materials?profile_id=${profileId}`
       );
     },
   },
 
   applications: {
-    track(payload: { job_id: number; status?: string }) {
-      return client.post<Application>('/api/applications/track', payload);
-    },
-    updateStatus(applicationId: string, status: string) {
-      return client.patch<Application>(`/api/applications/${applicationId}/status`, {
-        status,
+    track(jobId: number, profileId: number, status?: string) {
+      return client.post<Application>('/api/applications/track', {
+        job_id: jobId,
+        profile_id: profileId,
+        status: status || 'applied',
       });
     },
-    getStats() {
-      return client.get<ApplicationStats>('/api/applications/stats');
+    updateStatus(applicationId: number, newStatus: string, feedback?: string) {
+      return client.put<Application>(`/api/applications/${applicationId}/status`, {
+        new_status: newStatus,
+        feedback,
+      });
     },
-    list() {
-      return client.get<Application[]>('/api/applications');
+    getStats(profileId: number) {
+      return client.get<ApplicationStats>(`/api/applications/stats/${profileId}`);
     },
-  },
-
-  insights: {
-    get() {
-      return client.get<{
-        recommendations: string[];
-        market_trends: string[];
-        skill_gaps: string[];
-      }>('/api/insights');
+    list(profileId: number) {
+      return client.get<Application[]>(`/api/applications/${profileId}`);
+    },
+    getInsights(profileId: number) {
+      return client.get(`/api/applications/${profileId}/insights`);
     },
   },
 };

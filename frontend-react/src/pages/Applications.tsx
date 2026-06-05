@@ -3,13 +3,15 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { Application, ApplicationStats } from '../types';
 
+const PROFILE_ID = 1;
+
 export function Applications() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [stats, setStats] = useState<ApplicationStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([api.applications.list(), api.applications.getStats()])
+    Promise.all([api.applications.list(PROFILE_ID), api.applications.getStats(PROFILE_ID)])
       .then(([appsRes, statsRes]) => {
         setApplications(appsRes.data);
         setStats(statsRes.data);
@@ -18,10 +20,10 @@ export function Applications() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleStatusUpdate = async (appId: string, newStatus: string) => {
+  const handleStatusUpdate = async (appId: number, newStatus: string) => {
     try {
       await api.applications.updateStatus(appId, newStatus);
-      setApplications(applications.map((app: Application) =>
+      setApplications(applications.map(app =>
         app.application_id === appId ? { ...app, status: newStatus, last_updated: new Date().toISOString() } : app
       ));
     } catch {

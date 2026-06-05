@@ -40,7 +40,7 @@ export interface JobPosting {
 }
 
 export interface Application {
-  application_id: string;
+  application_id: number;
   status: string;
   date_applied: string;
   last_updated: string;
