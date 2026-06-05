@@ -204,7 +204,7 @@ class SecretQuestion(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     question = Column(String(500), nullable=False)
-    answer_hash = Column(String(255), nullable=False)
+    answer_hash = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     user = relationship("User", back_populates="secret_questions")

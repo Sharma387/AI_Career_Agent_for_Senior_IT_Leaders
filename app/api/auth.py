@@ -1,3 +1,4 @@
+import random
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -13,6 +14,19 @@ from app.core.config import settings
 from app.db.models import User, SecretQuestion, get_db
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+SECRET_QUESTION_POOL = [
+    "What was the name of your first pet?",
+    "What city were you born in?",
+    "What is your mother's maiden name?",
+    "What was the name of your first school?",
+    "What is the name of your favorite teacher?",
+    "What was the make of your first car?",
+    "What is your favorite book?",
+    "What is the name of the street you grew up on?",
+    "What is your favorite movie?",
+    "What was the name of your childhood best friend?",
+]
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -91,6 +105,12 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
     db.add(user)
     await db.flush()
 
+    selected = random.sample(SECRET_QUESTION_POOL, 3)
+    for q in selected:
+        sq = SecretQuestion(user_id=user.id, question=q, answer_hash=None)
+        db.add(sq)
+    await db.flush()
+
     token = create_access_token(user.id)
     return AuthResponse(
         access_token=token,
@@ -144,19 +164,15 @@ async def set_secret_questions(
     existing = await db.execute(
         select(SecretQuestion).where(SecretQuestion.user_id == user.id)
     )
-    for sq in existing.scalars().all():
-        await db.delete(sq)
+    stored = {sq.question: sq for sq in existing.scalars().all()}
 
     for qa in request.questions:
-        sq = SecretQuestion(
-            user_id=user.id,
-            question=qa["question"],
-            answer_hash=pwd_context.hash(qa["answer"].lower().strip()),
-        )
-        db.add(sq)
+        question = qa["question"]
+        if question in stored:
+            stored[question].answer_hash = pwd_context.hash(qa["answer"].lower().strip())
 
     await db.flush()
-    return {"message": "Secret questions set successfully"}
+    return {"message": "Secret questions updated successfully"}
 
 
 @router.get("/secret-questions/{email}")
@@ -169,7 +185,7 @@ async def get_secret_questions(email: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(SecretQuestion).where(SecretQuestion.user_id == user.id)
     )
-    questions = [{"id": sq.id, "question": sq.question} for sq in result.scalars().all()]
+    questions = [{"id": sq.id, "question": sq.question, "answer_set": sq.answer_hash is not None} for sq in result.scalars().all()]
     return {"questions": questions}
 
 

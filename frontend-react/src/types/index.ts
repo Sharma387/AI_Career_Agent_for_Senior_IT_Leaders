@@ -131,6 +131,7 @@ export interface InterviewStrategy {
 export interface SecretQuestion {
   id: number;
   question: string;
+  answer_set?: boolean;
 }
 
 export interface ApplicationStats {

@@ -3,7 +3,8 @@ import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './pages/Dashboard';
-import { Profile } from './pages/Profile';
+import { Resume } from './pages/Resume';
+import { Settings } from './pages/Settings';
 import { Jobs } from './pages/Jobs';
 import { Applications } from './pages/Applications';
 import { Insights } from './pages/Insights';
@@ -38,10 +39,18 @@ export default function App() {
             }
           />
           <Route
-            path="/profile"
+            path="/resume"
             element={
               <ProtectedRoute>
-                <Layout><Profile /></Layout>
+                <Layout><Resume /></Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Layout><Settings /></Layout>
               </ProtectedRoute>
             }
           />
