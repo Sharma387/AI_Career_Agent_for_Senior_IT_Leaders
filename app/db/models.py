@@ -42,7 +42,7 @@ class CareerProfile(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     full_name = Column(String(255), nullable=False)
-    email = Column(String(255), nullable=False, unique=True, index=True)
+    email = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
     summary = Column(Text, nullable=True)
     linkedin_url = Column(String(512), nullable=True)

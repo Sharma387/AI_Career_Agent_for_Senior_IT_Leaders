@@ -1,3 +1,4 @@
+import re
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,9 +38,14 @@ class ProfileService:
         sections = self.parser.extract_sections(raw_text)
         expanded = self.expander.expand_profile(raw_text)
 
+        contact = sections.get("contact_info", "")
+        name = contact.split("\n")[0].strip() if contact else "Unknown"
+        email_match = re.search(r"[\w.-]+@[\w.-]+\.[\w]+", contact)
+        email = email_match.group(0) if email_match else None
+
         profile = CareerProfile(
-            full_name=sections.get("contact_info", "").split("\n")[0] if sections.get("contact_info") else "Unknown",
-            email="",
+            full_name=name,
+            email=email,
             summary=expanded.get("summary", ""),
             raw_resume_text=raw_text,
         )
