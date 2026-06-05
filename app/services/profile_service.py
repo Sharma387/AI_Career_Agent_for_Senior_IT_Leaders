@@ -7,6 +7,7 @@ from app.db.models import CareerProfile, Project, Skill, Certification
 from app.rag.career_rag import CareerRAG
 from app.ingestion.career_expander import CareerExpander
 from app.ingestion.resume_parser import ResumeParser
+from app.services.document_service import render_resume_html, generate_resume_docx
 
 
 class ProfileService:
@@ -102,6 +103,37 @@ class ProfileService:
                 )
                 db_session.add(cert)
 
+        await db_session.flush()
+
+        skills_dict = {}
+        for category, skills_list in expanded.get("skills_by_category", {}).items():
+            skills_dict[category] = skills_list
+
+        nz_profile_data = {
+            "full_name": name,
+            "email": email or "",
+            "summary": expanded.get("summary", ""),
+            "resume_text": raw_text,
+            "projects": [
+                {
+                    "title": p.get("title", ""),
+                    "description": p.get("description", ""),
+                    "role": p.get("role", ""),
+                    "technologies": ", ".join(p.get("technologies", [])),
+                    "impact": p.get("impact", ""),
+                }
+                for p in expanded.get("detailed_projects", [])
+            ],
+            "skills": skills_dict,
+            "certifications": [
+                {"name": c.name, "issuer": c.issuer or ""}
+                for c in (await db_session.execute(
+                    select(Certification).where(Certification.profile_id == profile.id)
+                )).scalars().all()
+            ],
+        }
+        formatted_html = render_resume_html(nz_profile_data)
+        profile.formatted_resume_html = formatted_html
         await db_session.flush()
 
         profile_data = {

@@ -68,6 +68,12 @@ export const api = {
     addProject(profileId: number, project: Project) {
       return client.post<Project>(`/api/profile/${profileId}/project`, project);
     },
+    downloadResumeHtml(profileId: number) {
+      return `/api/profile/${profileId}/resume/html`;
+    },
+    downloadResumeDocx(profileId: number) {
+      return `/api/profile/${profileId}/resume/docx`;
+    },
   },
 
   jobs: {

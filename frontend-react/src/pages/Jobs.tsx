@@ -21,6 +21,7 @@ export function Jobs() {
   } | null>(null);
   const [generating, setGenerating] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'resume' | 'cover_letter'>('resume');
+  const [skillArticulations, setSkillArticulations] = useState<Record<number, { hasSkill: boolean; evidence: string }>>({});
 
   useEffect(() => {
     api.jobs.list()
@@ -178,14 +179,76 @@ export function Jobs() {
             <div className="mt-4">
               <h3 className="font-medium mb-2">Evidence</h3>
               <ul className="space-y-1">
-                {matchResult.evidence.map((e, i) => (
-                  <li key={i} className="text-sm text-gray-700">• {e}</li>
-                ))}
+                {matchResult.evidence.map((e, i) => {
+                  const text = typeof e === 'string' ? e : `${e.career_chunk} — ${e.relevance}`;
+                  return <li key={i} className="text-sm text-gray-700">• {text}</li>;
+                })}
               </ul>
             </div>
           )}
 
           <p className="mt-4 text-sm text-gray-600">{matchResult.explanation}</p>
+
+          {matchResult.gaps.length > 0 && (
+            <div className="mt-6 border-t pt-4">
+              <h3 className="font-semibold mb-3">Skills Articulation</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Review the identified gaps below. If you possess these skills, describe how you demonstrate them.
+                Your responses will be used to strengthen your profile and improve future matches.
+              </p>
+              <div className="space-y-4">
+                {matchResult.gaps.map((gap, i) => (
+                  <div key={i} className="bg-white rounded-lg p-4 border">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">{gap}</p>
+                        <div className="flex items-center gap-4 mt-2">
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="radio"
+                              name={`skill-${i}`}
+                              checked={skillArticulations[i]?.hasSkill === true}
+                              onChange={() => setSkillArticulations(prev => ({ ...prev, [i]: { hasSkill: true, evidence: prev[i]?.evidence || '' } }))}
+                            />
+                            I have this skill
+                          </label>
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="radio"
+                              name={`skill-${i}`}
+                              checked={skillArticulations[i]?.hasSkill === false}
+                              onChange={() => setSkillArticulations(prev => ({ ...prev, [i]: { hasSkill: false, evidence: '' } }))}
+                            />
+                            I don't have this yet
+                          </label>
+                        </div>
+                        {skillArticulations[i]?.hasSkill && (
+                          <textarea
+                            value={skillArticulations[i]?.evidence || ''}
+                            onChange={(e) => setSkillArticulations(prev => ({ ...prev, [i]: { ...prev[i], evidence: e.target.value } }))}
+                            className="input-field w-full mt-2"
+                            rows={3}
+                            placeholder="Describe how you demonstrate this skill (e.g., specific projects, achievements, examples)..."
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {Object.keys(skillArticulations).length > 0 && (
+                <button
+                  onClick={() => {
+                    alert('Articulations saved! These will be used to improve your future matches.');
+                    setSkillArticulations({});
+                  }}
+                  className="btn-primary mt-4"
+                >
+                  Save Articulations
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 

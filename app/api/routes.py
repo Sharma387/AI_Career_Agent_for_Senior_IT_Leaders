@@ -98,6 +98,52 @@ async def get_profile(profile_id: int, db_session: AsyncSession = Depends(get_db
     return result
 
 
+@router.get("/api/profile/{profile_id}/resume/html")
+async def download_base_resume_html(
+    profile_id: int,
+    db_session: AsyncSession = Depends(get_db),
+):
+    result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == profile_id)
+    )
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    html = profile.formatted_resume_html or ""
+    if not html:
+        from app.services.document_service import render_resume_html
+        profile_data = await _get_profile_structured(profile_id, db_session)
+        html = render_resume_html(profile_data)
+
+    return StreamingResponse(
+        BytesIO(html.encode()),
+        media_type="text/html",
+        headers={"Content-Disposition": f"attachment; filename=resume_{profile_id}.html"},
+    )
+
+
+@router.get("/api/profile/{profile_id}/resume/docx")
+async def download_base_resume_docx(
+    profile_id: int,
+    db_session: AsyncSession = Depends(get_db),
+):
+    result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == profile_id)
+    )
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    profile_data = await _get_profile_structured(profile_id, db_session)
+    docx_bytes = generate_resume_docx(profile_data)
+    return StreamingResponse(
+        BytesIO(docx_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename=resume_{profile_id}.docx"},
+    )
+
+
 @router.post("/api/profile/{profile_id}/project")
 async def add_project(
     profile_id: int,

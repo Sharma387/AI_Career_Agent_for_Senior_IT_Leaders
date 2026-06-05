@@ -124,15 +124,32 @@ export function Applications() {
                     <p className="mt-2 text-sm text-gray-600 italic">"{app.feedback_notes}"</p>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   {app.has_materials && (
-                    <button
-                      onClick={() => handleViewMaterials(app.application_id)}
-                      disabled={loadingMaterials === app.application_id}
-                      className="text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50"
-                    >
-                      {loadingMaterials === app.application_id ? 'Loading...' : 'View Materials'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleViewMaterials(app.application_id)}
+                        disabled={loadingMaterials === app.application_id}
+                        className="text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                      >
+                        {loadingMaterials === app.application_id ? 'Loading...' : 'View / Edit'}
+                      </button>
+                      <span className="text-gray-300">|</span>
+                      <a
+                        href={api.applications.downloadResumeHtml(app.application_id)}
+                        download
+                        className="text-sm text-gray-500 hover:text-gray-700"
+                      >
+                        Resume
+                      </a>
+                      <a
+                        href={api.applications.downloadCoverLetterHtml(app.application_id)}
+                        download
+                        className="text-sm text-gray-500 hover:text-gray-700"
+                      >
+                        Cover Letter
+                      </a>
+                    </div>
                   )}
                   <select
                     value={app.status}
@@ -204,10 +221,9 @@ export function Applications() {
                     rows={15}
                   />
                 ) : (
-                  <div
-                    className="bg-white rounded-lg border p-6 max-h-96 overflow-y-auto"
-                    dangerouslySetInnerHTML={{ __html: viewingMaterials.resume_version_text ? `<div>${viewingMaterials.resume_version_text}</div>` : '<p class="text-gray-500">No resume generated yet</p>' }}
-                  />
+                  <div className="bg-white rounded-lg border p-6 max-h-96 overflow-y-auto whitespace-pre-wrap text-sm">
+                    {viewingMaterials.resume_version_text || 'No resume generated yet'}
+                  </div>
                 )}
                 {!editing && (
                   <div className="flex gap-2 mt-4">
@@ -238,10 +254,9 @@ export function Applications() {
                     rows={10}
                   />
                 ) : (
-                  <div
-                    className="bg-white rounded-lg border p-6 max-h-96 overflow-y-auto"
-                    dangerouslySetInnerHTML={{ __html: viewingMaterials.cover_letter_text ? `<div>${viewingMaterials.cover_letter_text}</div>` : '<p class="text-gray-500">No cover letter generated yet</p>' }}
-                  />
+                  <div className="bg-white rounded-lg border p-6 max-h-96 overflow-y-auto whitespace-pre-wrap text-sm">
+                    {viewingMaterials.cover_letter_text || 'No cover letter generated yet'}
+                  </div>
                 )}
                 {!editing && (
                   <div className="flex gap-2 mt-4">

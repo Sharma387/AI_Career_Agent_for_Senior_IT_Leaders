@@ -55,7 +55,7 @@ export interface MatchResult {
   match_score: number;
   strengths: string[];
   gaps: string[];
-  evidence: string[];
+  evidence: Array<string | { career_chunk: string; relevance: string }>;
   explanation: string;
   recommendation: string;
 }
