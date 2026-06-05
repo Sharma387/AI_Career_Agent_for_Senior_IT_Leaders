@@ -107,7 +107,7 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
 
     selected = random.sample(SECRET_QUESTION_POOL, 3)
     for q in selected:
-        sq = SecretQuestion(user_id=user.id, question=q, answer_hash=None)
+        sq = SecretQuestion(user_id=user.id, question=q, answer_hash="__PENDING__")
         db.add(sq)
     await db.flush()
 
@@ -206,7 +206,10 @@ async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Dep
         answer = answer_data["answer"].lower().strip()
         if question not in stored_questions:
             raise HTTPException(status_code=400, detail=f"Invalid question: {question}")
-        if not pwd_context.verify(answer, stored_questions[question]):
+        stored_hash = stored_questions[question]
+        if stored_hash == "__PENDING__":
+            raise HTTPException(status_code=400, detail="Security questions not yet configured. Please contact support.")
+        if not pwd_context.verify(answer, stored_hash):
             raise HTTPException(status_code=400, detail="Incorrect answer")
 
     user.hashed_password = pwd_context.hash(request.new_password)
@@ -226,3 +229,22 @@ async def change_password(
     user.hashed_password = pwd_context.hash(request.new_password)
     await db.flush()
     return {"message": "Password changed successfully"}
+
+
+@router.post("/assign-questions")
+async def assign_questions(
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    existing = await db.execute(
+        select(SecretQuestion).where(SecretQuestion.user_id == user.id)
+    )
+    if existing.scalars().first():
+        return {"message": "Questions already assigned", "assigned": False}
+
+    selected = random.sample(SECRET_QUESTION_POOL, 3)
+    for q in selected:
+        sq = SecretQuestion(user_id=user.id, question=q, answer_hash="__PENDING__")
+        db.add(sq)
+    await db.flush()
+    return {"message": "Questions assigned successfully", "assigned": True}

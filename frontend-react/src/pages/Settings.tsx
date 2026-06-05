@@ -28,7 +28,14 @@ export function Settings() {
       const meRes = await api.auth.me()
       const email = meRes.data.email
       const qRes = await api.auth.getSecretQuestions(email)
-      const qs: SecretQuestion[] = qRes.data.questions || qRes.data
+      let qs: SecretQuestion[] = qRes.data.questions || qRes.data
+
+      if (!qs || qs.length === 0) {
+        await api.auth.assignQuestions()
+        const qRes2 = await api.auth.getSecretQuestions(email)
+        qs = qRes2.data.questions || qRes2.data
+      }
+
       setQuestions(qs)
       const initialAnswers: Record<number, string> = {}
       qs.forEach((q) => {

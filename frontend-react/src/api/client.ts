@@ -74,6 +74,9 @@ export const api = {
         new_password: newPassword,
       });
     },
+    assignQuestions() {
+      return client.post<{ message: string; assigned: boolean }>('/api/auth/assign-questions');
+    },
   },
 
   profile: {

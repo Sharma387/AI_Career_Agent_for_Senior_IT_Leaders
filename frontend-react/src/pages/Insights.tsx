@@ -1,22 +1,29 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 
-const PROFILE_ID = 1;
+const PROFILE_ID_KEY = 'career_agent_profile_id';
 
 interface Insights {
-  recommendations: string[];
-  market_trends: string[];
-  skill_gaps: string[];
+  rejection_patterns: string[];
+  success_patterns: string[];
+  improvement_suggestions: string[];
+  interview_conversion_rate: number;
+  insights: string[];
 }
 
 export function Insights() {
   const [insights, setInsights] = useState<Insights | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    api.applications.getInsights(PROFILE_ID)
+    const stored = localStorage.getItem(PROFILE_ID_KEY);
+    const profileId = stored ? Number(stored) : 1;
+    api.applications.getInsights(profileId)
       .then((res) => setInsights(res.data))
-      .catch(() => null)
+      .catch((err) => {
+        setError(err.response?.data?.detail || 'Failed to load insights');
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -28,39 +35,68 @@ export function Insights() {
     );
   }
 
-  if (!insights) {
+  if (error) {
     return (
       <div className="space-y-8">
         <h1 className="text-2xl font-bold">Career Insights</h1>
         <div className="card text-center py-12">
-          <p className="text-gray-500">No insights available. Complete your profile to generate insights.</p>
+          <p className="text-red-500">{error}</p>
         </div>
       </div>
     );
   }
 
+  if (!insights) {
+    return (
+      <div className="space-y-8">
+        <h1 className="text-2xl font-bold">Career Insights</h1>
+        <div className="card text-center py-12">
+          <p className="text-gray-500">No insights available. Upload a resume and apply to jobs to generate insights.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const convRate = insights.interview_conversion_rate ?? 0;
+
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold">Career Insights</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="card">
+        <h2 className="text-lg font-semibold mb-2">Interview Conversion Rate</h2>
+        <div className="flex items-center gap-4">
+          <div className="text-4xl font-bold text-blue-600">{(convRate * 100).toFixed(0)}%</div>
+          <p className="text-sm text-gray-500">
+            {convRate === 0 ? 'Insufficient data to calculate' : 'Of applications lead to interviews'}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <InsightCard
-          title="Recommendations"
-          items={insights.recommendations}
-          color="blue"
-          icon="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-        />
-        <InsightCard
-          title="Market Trends"
-          items={insights.market_trends}
+          title="Success Patterns"
+          items={insights.success_patterns}
           color="green"
-          icon="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
+          icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
         />
         <InsightCard
-          title="Skill Gaps"
-          items={insights.skill_gaps}
+          title="Rejection Patterns"
+          items={insights.rejection_patterns}
+          color="red"
+          icon="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+        />
+        <InsightCard
+          title="Improvement Suggestions"
+          items={insights.improvement_suggestions}
+          color="blue"
+          icon="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+        />
+        <InsightCard
+          title="Key Insights"
+          items={insights.insights}
           color="amber"
-          icon="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+          icon="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
         />
       </div>
     </div>
@@ -77,6 +113,7 @@ function InsightCard({ title, items, color, icon }: {
     blue: { bg: 'bg-blue-50', border: 'border-blue-200', icon: 'text-blue-600' },
     green: { bg: 'bg-green-50', border: 'border-green-200', icon: 'text-green-600' },
     amber: { bg: 'bg-amber-50', border: 'border-amber-200', icon: 'text-amber-600' },
+    red: { bg: 'bg-red-50', border: 'border-red-200', icon: 'text-red-600' },
   };
   const c = colorMap[color] || colorMap.blue;
 
