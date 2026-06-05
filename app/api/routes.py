@@ -6,6 +6,8 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import ApplicationStatus, get_db
+from app.db.models import User
+from app.api.auth import get_current_user
 from app.services.profile_service import ProfileService
 from app.services.job_service import JobService
 from app.services.tracking_service import TrackingService

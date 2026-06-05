@@ -50,6 +50,15 @@ class Settings(BaseSettings):
     TOP_K_RETRIEVAL: int = 5
     MATCH_SCORE_THRESHOLD: float = 60.0
 
+    JWT_SECRET_KEY: str = Field(default="", description="Secret key for JWT tokens. Empty = auth disabled.")
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+
+    REDIS_URL: str = Field(default="", description="Redis URL. Empty = in-memory fallback.")
+    REDIS_CACHE_TTL: int = 300  # 5 minutes
+
+    RATE_LIMIT_PER_MINUTE: int = 60
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

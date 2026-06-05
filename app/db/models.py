@@ -25,6 +25,19 @@ class Base(DeclarativeBase):
     pass
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(255), nullable=False)
+    full_name = Column(String(255), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    profile = relationship("CareerProfile", back_populates="user", uselist=False)
+
+
 class ApplicationStatus(str, PyEnum):
     applied = "applied"
     reviewing = "reviewing"
@@ -41,6 +54,7 @@ class CareerProfile(Base):
     __tablename__ = "career_profiles"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     full_name = Column(String(255), nullable=False)
     email = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
@@ -55,6 +69,7 @@ class CareerProfile(Base):
     certifications = relationship("Certification", back_populates="profile", cascade="all, delete-orphan")
     applications = relationship("Application", back_populates="profile", cascade="all, delete-orphan")
     match_results = relationship("MatchResult", back_populates="profile", cascade="all, delete-orphan")
+    user = relationship("User", back_populates="profile")
 
 
 class Project(Base):

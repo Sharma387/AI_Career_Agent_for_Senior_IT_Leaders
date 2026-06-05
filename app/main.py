@@ -2,11 +2,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
+from app.core.rate_limit import RateLimitMiddleware
 from app.db.models import init_db
 from app.api.routes import router
+from app.api.auth import router as auth_router
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
@@ -31,7 +32,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(RateLimitMiddleware, requests_per_minute=settings.RATE_LIMIT_PER_MINUTE)
+
+app.include_router(auth_router)
 app.include_router(router)
+
+
+@app.get("/api/health")
+async def health_check():
+    return {"status": "ok"}
+
 
 @app.get("/")
 async def root():
