@@ -1,0 +1,66 @@
+ALEX CHEN
+San Francisco, CA 94105
+alex.chen@email.com | (415) 555-0192
+linkedin.com/in/alexchen-cto | alexchen.dev
+
+PROFESSIONAL SUMMARY
+====================
+Transformational technology executive with 15+ years of experience driving enterprise-scale platform engineering, cloud migration strategies, and high-performing engineering organizations. Proven track record of delivering $50M+ in cost savings through infrastructure optimization, scaling teams from 20 to 120+ engineers, and leading platform transformations supporting 100M+ daily active users. Passionate about building resilient, observable systems and fostering engineering cultures rooted in ownership and innovation.
+
+PROFESSIONAL EXPERIENCE
+=======================
+
+VP Engineering, TechScale Inc.
+January 2021 – Present | San Francisco, CA
+• Lead a 120-person engineering organization across 8 squads delivering a real-time data processing platform serving 120M daily active users with 99.99% uptime SLA
+• Spearheaded migration from monolithic architecture to event-driven microservices, reducing deployment frequency from bi-weekly to 200+ deploys per day and cutting mean time to recovery from 4 hours to 12 minutes
+• Drove $38M annual infrastructure cost reduction by implementing Kubernetes-based autoscaling, reserved instance strategies, and multi-cloud failover architecture across AWS and GCP
+• Established engineering career ladder and mentorship program that improved retention from 72% to 94% and reduced time-to-hire from 65 days to 28 days
+• Owned $18M annual platform P&L, negotiating vendor contracts and optimizing spend while delivering 3x throughput improvement on core data pipelines
+• Partnered with CISO to achieve SOC 2 Type II, ISO 27001, and HIPAA compliance across all platform services
+
+Director of Infrastructure, CloudFirst Solutions
+March 2017 – December 2020 | Austin, TX
+• Built and scaled infrastructure engineering team from 12 to 45 engineers, establishing SRE, Platform, and Security sub-teams with clear ownership models
+• Architected multi-region Kubernetes platform on AWS EKS handling 50K requests per second with sub-50ms p99 latency, supporting $2B annual transaction volume
+• Led enterprise cloud migration initiative moving 200+ applications from on-premises data centers to AWS, completing 6 months ahead of schedule and 15% under budget
+• Implemented GitOps-driven CI/CD pipelines using ArgoCD and Terraform, reducing infrastructure provisioning time from 2 weeks to 15 minutes for standard environments
+• Designed and deployed distributed tracing and observability stack using OpenTelemetry, Grafana, and PagerDuty, reducing MTTR by 68% and saving $4.2M in incident-related revenue loss
+• Championed chaos engineering practices using Litmus Chaos, improving platform resilience scores from 62% to 97%
+
+Senior Engineer, DataPipe Systems
+June 2012 – February 2017 | Seattle, WA
+• Designed and built real-time ETL pipeline processing 2TB daily using Apache Kafka, Apache Spark, and Cassandra, reducing data latency from 4 hours to under 30 seconds
+• Led development of Python-based API gateway handling 10K concurrent connections with rate limiting, circuit breaking, and OAuth 2.0 authentication
+• Mentored team of 8 junior and mid-level engineers, establishing code review practices and technical design documentation standards adopted company-wide
+• Implemented comprehensive monitoring and alerting infrastructure using Prometheus and Grafana, achieving 99.95% service availability
+• Migrated legacy Oracle data warehouse to cloud-native Snowflake architecture, reducing query performance by 85% and annual licensing costs by $1.2M
+
+TECHNICAL SKILLS
+================
+Cloud & Infrastructure: AWS (EC2, EKS, Lambda, S3, RDS, DynamoDB, SQS, SNS), Azure (AKS, Functions, Cosmos DB), GCP (GKE, BigQuery, Cloud Functions)
+Containerization & Orchestration: Kubernetes, Docker, Helm, Istio, ArgoCD, Flux
+Infrastructure as Code: Terraform, CloudFormation, Pulumi, Ansible, Chef
+Programming Languages: Python, Java, Go, TypeScript, Bash, SQL
+Data & Messaging: Apache Kafka, Apache Spark, Redis, PostgreSQL, MongoDB, Cassandra, Elasticsearch, Snowflake
+CI/CD & DevOps: GitHub Actions, GitLab CI, Jenkins, ArgoCD, Spinnaker, Tekton
+Observability: Prometheus, Grafana, Datadog, OpenTelemetry, Jaeger, PagerDuty, Splunk
+Security: Vault, Istio mTLS, OWASP, SOC 2, ISO 27001
+Leadership: Engineering Management, Technical Strategy, Vendor Negotiation, Budget Ownership, Agile/SAFe, Cross-functional Collaboration
+
+EDUCATION
+=========
+Master of Science in Computer Science
+University of Washington, Seattle, WA | 2012
+Thesis: Distributed Stream Processing for Real-Time Analytics at Scale
+
+Bachelor of Science in Computer Science
+University of California, Berkeley, CA | 2010
+Magna Cum Laude | Dean's List All Semesters
+
+CERTIFICATIONS
+==============
+AWS Certified Solutions Architect – Professional (2023)
+TOGAF 9.2 Certified Enterprise Architect (2022)
+Certified Kubernetes Administrator (CKA) (2021)
+Google Cloud Professional Cloud Architect (2020)

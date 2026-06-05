@@ -1,0 +1,54 @@
+Senior Director of Platform Engineering
+FinServe Global | New York, NY (Hybrid)
+
+ABOUT FINERVE GLOBAL
+====================
+FinServe Global is a Series D fintech company ($2.8B valuation) transforming how institutional investors access and manage alternative assets. Our platform processes $40B in monthly transaction volume across 2,000+ institutional clients in 35 countries. Backed by Sequoia Capital, Andreessen Horowitz, and Tiger Global, we're building the next-generation infrastructure for global finance. Our engineering culture prioritizes reliability, security, and performance — because in our world, downtime isn't an inconvenience, it's a regulatory and financial risk.
+
+ROLE OVERVIEW
+=============
+We're seeking a Senior Director of Platform Engineering to own the foundational infrastructure powering FinServe's real-time trading, settlement, and compliance platform. You'll lead a 65+ person engineering organization across Platform, SRE, Data Infrastructure, and Developer Experience teams. This is a high-impact leadership role reporting directly to the CTO with visibility to the board and executive leadership team. You'll be responsible for ensuring our platform meets the stringent reliability, security, and performance requirements of institutional financial services while enabling engineering velocity across 8 product squads.
+
+KEY RESPONSIBILITIES
+====================
+• Lead and scale a 65+ person platform engineering organization across 4 teams (Platform, SRE, Data Infrastructure, Developer Experience), including hiring, performance management, career development, and organizational design
+• Own platform reliability and performance for systems processing $40B in monthly transaction volume with 99.999% uptime requirements, establishing SLOs, error budgets, and incident response frameworks
+• Define and execute multi-year platform strategy including cloud-native architecture evolution, observability maturity, and developer productivity initiatives aligned with business growth targets
+• Partner with CISO and compliance teams to maintain SOC 2 Type II, PCI DSS, and regulatory compliance across all platform services, including audit readiness and security architecture reviews
+• Drive platform cost optimization across $22M annual cloud spend, negotiating vendor contracts and implementing FinOps practices that balance performance with fiscal responsibility
+• Establish and enforce engineering standards for code quality, testing, deployment practices, and infrastructure as code across the organization, fostering a culture of technical excellence and ownership
+
+REQUIRED QUALIFICATIONS
+========================
+1. 12+ years of software engineering experience with 7+ years in senior engineering leadership roles managing organizations of 40+ engineers
+2. Deep expertise in Kubernetes and container orchestration at enterprise scale, including multi-cluster federation, service mesh, and production troubleshooting
+3. Extensive experience with AWS cloud services and architecture, including EKS, Lambda, RDS, DynamoDB, SQS, and multi-account landing zone strategies
+4. Proven track record building and operating high-availability distributed systems with 99.99%+ uptime in regulated industries (fintech, healthcare, or government)
+5. Strong experience with microservices architecture patterns, event-driven systems, and API design at scale handling 10K+ requests per second
+6. Hands-on expertise with CI/CD pipeline design and implementation using tools like ArgoCD, GitHub Actions, or GitLab CI at organizational scale
+7. Experience owning and managing engineering budgets of $10M+ including cloud infrastructure spend, tooling, and vendor contracts
+8. Demonstrated ability to build inclusive, high-performing engineering cultures with strong retention and development outcomes
+9. Excellent communication skills with ability to present technical strategy to executive leadership and board-level audiences
+10. Experience operating in PCI DSS, SOC 2, or similar compliance environments with understanding of regulatory implications on architecture decisions
+
+NICE TO HAVE
+=============
+• Experience with financial messaging protocols (FIX, SWIFT, ISO 20022) or real-time payment processing systems
+• Background in Python-based platform tooling and developer experience frameworks
+• Familiarity with service mesh technologies (Istio, Linkerd) and advanced traffic management
+• Previous experience in venture-backed fintech companies navigating rapid growth and scaling challenges
+• TOGAF or similar enterprise architecture certification
+
+COMPENSATION & BENEFITS
+========================
+• Base salary: $240,000 – $300,000 + equity (0.08% – 0.15%)
+• Annual performance bonus: 25% – 40% of base
+• Comprehensive health, dental, and vision insurance
+• 401(k) with 6% match
+• $5,000 annual professional development budget
+• Flexible PTO + 12 company holidays
+• Hybrid work: 3 days in-office (Tues, Weds, Thurs), 2 days remote
+
+EMPLOYMENT TYPE
+===============
+Full-time | Exempt | Hybrid (On-site Tues–Thurs)
