@@ -259,10 +259,44 @@ Environment variables in `.env`:
 - Smaller models (3B, 7B) may struggle with complex JSON extraction
 - For best results with local LLMs, use `llama3.1:8b` or `llama3.1:70b`
 
-## Advanced Phase (Designed, Not Implemented)
+## Roadmap
+
+### Phase 2: Production Hardening
+
+- React/TypeScript frontend with Tailwind CSS (replacing Streamlit)
+- User authentication (JWT + OAuth)
+- PostgreSQL migration (replacing SQLite)
+- Redis caching for RAG queries
+- Rate limiting and request validation
+
+### Phase 3: Intelligence Expansion
 
 - Job scraping agents (Seek, LinkedIn)
 - Email ingestion (Gmail API)
-- Daily job recommendations
-- Auto-apply assistant
-- Career trend analysis engine
+- Daily job recommendations engine
+- Auto-apply assistant (optional)
+- Career trend analysis across market data
+
+### Phase 4: Enterprise Features
+
+- Multi-user support for executive coaching firms
+- Custom knowledge base ingestion (company-specific data)
+- Integration with ATS systems (Greenhouse, Lever)
+- White-label deployment options
+
+### Phase 5: AI Agent Autonomy
+
+- Autonomous job application monitoring and alerting
+- Proactive career opportunity identification
+- Automated outreach drafting and follow-up
+- Real-time market intelligence dashboard
+
+### Why Streamlit First, React Later
+
+Streamlit was chosen for the MVP because:
+- Python end-to-end (no JS/TS context switching)
+- RAG libraries are Python-native (LangChain, ChromaDB)
+- 200 lines of Streamlit vs 2000+ lines of React for same functionality
+- Faster iteration for validating core RAG and matching logic
+
+The backend is a clean FastAPI REST API — swapping Streamlit for React is a frontend-only change. All 13 API endpoints stay the same.
