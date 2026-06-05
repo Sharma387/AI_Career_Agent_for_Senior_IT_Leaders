@@ -55,7 +55,10 @@ def api_get(endpoint, params=None):
 
 def api_post(endpoint, data=None, files=None, params=None):
     try:
-        r = httpx.post(f"{BACKEND_URL}{endpoint}", data=data, files=files, params=params, timeout=120)
+        if files:
+            r = httpx.post(f"{BACKEND_URL}{endpoint}", data=data, files=files, params=params, timeout=120)
+        else:
+            r = httpx.post(f"{BACKEND_URL}{endpoint}", json=data, params=params, timeout=120)
         r.raise_for_status()
         return r.json()
     except httpx.ConnectError:
