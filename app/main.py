@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.rate_limit import RateLimitMiddleware
+from app.core.scheduler.job_scheduler import job_scheduler
 from app.db.models import init_db
 from app.api.routes import router
 from app.api.auth import router as auth_router
@@ -15,7 +16,25 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    # Start the job scraping scheduler
+    print("LIFESPAN: Starting job scheduler...")
+    try:
+        job_scheduler.start()
+        print("LIFESPAN: Job scheduler started successfully")
+    except Exception as e:
+        print(f"LIFESPAN: Error starting job scheduler: {e}")
+        import traceback
+        traceback.print_exc()
     yield
+    # Shutdown the scheduler when app stops
+    print("LIFESPAN: Shutting down job scheduler...")
+    try:
+        job_scheduler.shutdown()
+        print("LIFESPAN: Job scheduler shut down successfully")
+    except Exception as e:
+        print(f"LIFESPAN: Error shutting down job scheduler: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 app = FastAPI(

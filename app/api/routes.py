@@ -1,16 +1,20 @@
 import os
 import tempfile
+import logging
+from datetime import datetime
 from io import BytesIO
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Application, ApplicationStatus, CareerProfile, JobPosting, Project, Skill, Certification, MatchResult, SkillArticulation, get_db
 from app.db.models import User
-from app.api.auth import get_current_user
+from app.api.auth import get_current_user, require_user
 from app.services.profile_service import ProfileService
 from app.services.job_service import JobService
 from app.services.tracking_service import TrackingService
@@ -23,6 +27,7 @@ from app.services.document_service import (
 from app.core.config import settings
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 profile_service = ProfileService()
 job_service = JobService()
@@ -66,6 +71,7 @@ class UpdateResumeRequest(BaseModel):
 async def upload_resume(
     file: UploadFile = File(...),
     db_session: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user),
 ):
     allowed = {"application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain"}
     if file.content_type not in allowed:
@@ -85,10 +91,24 @@ async def upload_resume(
         tmp_path = tmp.name
 
     try:
-        result = await profile_service.upload_resume(tmp_path, db_session)
+        result = await profile_service.upload_resume(tmp_path, db_session, user_id=user.id if user else None)
         return result
     finally:
         os.unlink(tmp_path)
+
+
+@router.get("/api/profile/me")
+async def get_my_profile(
+    user: User = Depends(require_user),
+    db_session: AsyncSession = Depends(get_db),
+):
+    result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.user_id == user.id)
+    )
+    profile = result.scalar_one_or_none()
+    if not profile:
+        return {"profile": None, "projects": [], "skills": []}
+    return await profile_service.get_profile(profile.id, db_session)
 
 
 @router.get("/api/profile/{profile_id}")
@@ -169,6 +189,76 @@ async def add_job(
 @router.get("/api/jobs")
 async def list_jobs(db_session: AsyncSession = Depends(get_db)):
     return await job_service.get_all_jobs(db_session)
+
+
+@router.post("/api/jobs/scrape")
+async def scrape_jobs(
+    source: str,
+    keywords: str = "",
+    location: str = "",
+    page: int = 1,
+    db_session: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user),
+):
+    """
+    Scrape jobs from a specific source.
+    Requires authentication.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    search_params = {
+        "keywords": keywords,
+        "location": location,
+        "page": page
+    }
+
+    try:
+        result = await job_service.scrape_and_store_jobs(
+            source=source,
+            search_params=search_params,
+            db_session=db_session
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error scraping jobs: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/api/jobs/scrape-multiple")
+async def scrape_multiple_jobs(
+    sources: List[str],
+    keywords: str = "",
+    location: str = "",
+    page: int = 1,
+    db_session: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user),
+):
+    """
+    Scrape jobs from multiple sources.
+    Requires authentication.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    search_params = {
+        "keywords": keywords,
+        "location": location,
+        "page": page
+    }
+
+    try:
+        result = await job_service.scrape_multiple_sources(
+            sources=sources,
+            search_params=search_params,
+            db_session=db_session
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error scraping multiple job sources: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/api/jobs/{job_id}/match")
@@ -498,6 +588,170 @@ async def get_llm_info():
         "model": settings.NVIDIA_MODEL if settings.LLM_PROVIDER == "nvidia" else settings.OLLAMA_MODEL,
         "embedding_model": settings.EMBEDDING_MODEL,
     }
+
+
+# External Scheduler API Endpoints for Job Scraping
+# These endpoints are designed to be triggered by external schedulers (cron, cloud schedulers, etc.)
+
+class ScrapeTriggerRequest(BaseModel):
+    source: Optional[str] = None  # Specific source to scrape (linkedin, seek, etc.) or None for all
+    keywords: str = ""
+    location: str = ""
+    hours: Optional[int] = None  # For incremental scrape: how many hours back to look
+    force: bool = False  # Bypass deduplication checks
+
+
+@router.post("/api/jobs/scrape/trigger")
+async def trigger_job_scrape(
+    request: ScrapeTriggerRequest,
+    db_session: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user),
+):
+    """
+    Trigger job scraping manually or via external scheduler.
+    Requires authentication for security.
+
+    This endpoint can be called by external schedulers (cron, GitHub Actions,
+    AWS EventBridge, Azure Logic Apps, Cloud Scheduler, etc.) to initiate
+    job scraping on demand.
+
+    Args:
+        request: Scrape configuration including source, keywords, location, etc.
+        db_session: Database session
+        user: Current authenticated user (required for security)
+
+    Returns:
+        Dictionary with scraping results and statistics
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Prepare search parameters
+    search_params = {
+        "keywords": request.keywords,
+        "location": request.location,
+        "page": 1
+    }
+
+    # Add time filter for incremental scraping if hours specified
+    if request.hours is not None and request.hours > 0:
+        # Convert hours to seconds for LinkedIn's f_TPR parameter
+        seconds = request.hours * 3600
+        search_params["time_filter"] = f"r{seconds}"  # Custom time filter in seconds
+
+    try:
+        # Determine which sources to scrape
+        sources_to_scrape = [request.source] if request.source else None
+
+        if sources_to_scrape:
+            # Scrape specific source
+            if request.source not in ['seek', 'linkedin']:
+                raise HTTPException(status_code=400, detail=f"Unsupported source: {request.source}")
+
+            result = await job_service.scrape_and_store_jobs(
+                source=request.source,
+                search_params=search_params,
+                db_session=db_session
+            )
+
+            # Format response for single source
+            response = {
+                "trigger_type": "manual" if request.force else "scheduled",
+                "source": request.source,
+                "search_params": search_params,
+                "results": result,
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+        else:
+            # Scrape all sources
+            result = await job_service.scrape_multiple_sources(
+                sources=None,  # None means all sources
+                search_params=search_params,
+                db_session=db_session
+            )
+
+            # Format response for multiple sources
+            response = {
+                "trigger_type": "manual" if request.force else "scheduled",
+                "sources": ['seek', 'linkedin'],  # Currently supported sources
+                "search_params": search_params,
+                "results": result,
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+
+        return response
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error triggering job scrape: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/api/jobs/scrape/incremental")
+async def trigger_incremental_scrape(
+    hours: int = Query(2, description="Hours back to look for new jobs"),
+    source: Optional[str] = Query(None, description="Specific source to scrape (linkedin, seek, etc.)"),
+    db_session: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user),
+):
+    """
+    Trigger incremental job scraping for recently posted jobs.
+    Designed to be called every 2 hours during business hours.
+
+    Args:
+        hours: How many hours back to look for new jobs (default: 2)
+        source: Specific source to scrape or None for all sources
+        db_session: Database session
+        user: Current authenticated user (required for security)
+
+    Returns:
+        Dictionary with scraping results and statistics
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    if hours <= 0:
+        raise HTTPException(status_code=400, detail="Hours must be positive")
+
+    # Use the trigger endpoint with incremental parameters
+    request = ScrapeTriggerRequest(
+        source=source,
+        hours=hours,
+        force=False  # Incremental scrape respects deduplication
+    )
+
+    return await trigger_job_scrape(request, db_session, user)
+
+
+@router.post("/api/jobs/scrape/full")
+async def trigger_full_scrape(
+    source: Optional[str] = Query(None, description="Specific source to scrape (linkedin, seek, etc.)"),
+    db_session: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user),
+):
+    """
+    Trigger full job scraping for all jobs.
+    Designed to be called once daily for complete refresh.
+
+    Args:
+        source: Specific source to scrape or None for all sources
+        db_session: Database session
+        user: Current authenticated user (required for security)
+
+    Returns:
+        Dictionary with scraping results and statistics
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Use the trigger endpoint with no time filter for full scrape
+    request = ScrapeTriggerRequest(
+        source=source,
+        force=True  # Full scrape can bypass deduplication for completeness
+    )
+
+    return await trigger_job_scrape(request, db_session, user)
 
 
 @router.get("/api/match/{job_id}/{profile_id}")

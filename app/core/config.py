@@ -59,6 +59,24 @@ class Settings(BaseSettings):
 
     RATE_LIMIT_PER_MINUTE: int = 60
 
+    # LinkedIn scraping configuration
+    LINKEDIN_SCRAPING_ENABLED: bool = Field(default=False, description="Enable LinkedIn job scraping")
+    LINKEDIN_EMAIL: str = Field(default="", description="LinkedIn email for authentication")
+    LINKEDIN_PASSWORD: str = Field(default="", description="LinkedIn password for authentication")
+
+    # Scraping schedule configuration (NZ time)
+    BUSINESS_HOURS_START: int = Field(default=8, description="Start hour for business hours scraping (NZ time, 24-hour format)")
+    BUSINESS_HOURS_END: int = Field(default=18, description="End hour for business hours scraping (NZ time, 24-hour format)")
+    INCREMENTAL_SCRAPE_HOURS: int = Field(default=2, description="Hours back for incremental scrape during business hours")
+    FULL_SCRAPE_TIME_HOUR: int = Field(default=2, description="Hour for daily full scrape (NZ time, 24-hour format)")
+    FULL_SCRAPE_TIME_MINUTE: int = Field(default=0, description="Minute for daily full scrape (NZ time)")
+    SCHEDULER_TIMEZONE: str = Field(default="Pacific/Auckland", description="Timezone for scheduler (NZ time)")
+    SCHEDULER_INCREMENTAL_ENABLED: bool = Field(default=True, description="Enable incremental scraping scheduler")
+    SCHEDULER_FULL_ENABLED: bool = Field(default=True, description="Enable full scraping scheduler")
+    SEEK_SCRAPING_ENABLED: bool = Field(default=False, description="Seek scraping enabled (requires implementation)")
+    SEEK_DEFAULT_KEYWORDS: str = Field(default="", description="Default keywords for Seek scraping")
+    SEEK_DEFAULT_LOCATION: str = Field(default="", description="Default location for Seek scraping")
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

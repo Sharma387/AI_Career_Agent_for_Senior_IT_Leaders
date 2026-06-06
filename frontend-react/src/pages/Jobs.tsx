@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import type { JobPosting, MatchResult, MatchScoreBreakdown, ImprovementRecommendation, InterviewStrategy } from '../types';
-
-const PROFILE_ID = 1;
 
 interface SavedMatch {
   match_id: number;
@@ -38,6 +37,7 @@ function ScoreBar({ label, score, max, weight }: { label: string; score: number;
 }
 
 export function Jobs() {
+  const { profileId } = useAuth();
   const [jobs, setJobs] = useState<JobPosting[]>([]);
   const [loading, setLoading] = useState(true);
   const [matchResult, setMatchResult] = useState<MatchResult | null>(null);
@@ -58,6 +58,8 @@ export function Jobs() {
   const [llmInfo, setLlmInfo] = useState<{ provider: string; model: string } | null>(null);
   const [interviewStrategy, setInterviewStrategy] = useState<InterviewStrategy | null>(null);
   const [loadingStrategy, setLoadingStrategy] = useState<number | null>(null);
+  const [scraping, setScraping] = useState(false);
+  const [scrapeResults, setScrapeResults] = useState<any | null>(null);
   
 
   useEffect(() => {
@@ -78,7 +80,7 @@ export function Jobs() {
     setInterviewStrategy(null);
 
     try {
-      const prevRes = await api.match.getPrevious(jobId, PROFILE_ID);
+      const prevRes = await api.match.getPrevious(jobId, profileId!);
       if (prevRes.data) {
         const saved: SavedMatch = prevRes.data;
         setMatchResult({
@@ -101,7 +103,7 @@ export function Jobs() {
         });
         setSkillArticulations(arts);
       } else {
-        const res = await api.jobs.matchEnhanced(jobId, PROFILE_ID);
+        const res = await api.jobs.matchEnhanced(jobId, profileId!);
         const data = res.data as any;
         setMatchResult(data);
         setCurrentMatchId(data.match_id ? Number(data.match_id) : null);
@@ -117,7 +119,7 @@ export function Jobs() {
     setGenerating(jobId);
     setGeneratedMaterials(null);
     try {
-      const res = await api.jobs.generateMaterials(jobId, PROFILE_ID);
+      const res = await api.jobs.generateMaterials(jobId, profileId!);
       setGeneratedMaterials(res.data);
       setActiveTab('resume');
     } catch {
@@ -131,12 +133,35 @@ export function Jobs() {
     setLoadingStrategy(jobId);
     setInterviewStrategy(null);
     try {
-      const res = await api.jobs.getInterviewStrategy(jobId, PROFILE_ID);
+      const res = await api.jobs.getInterviewStrategy(jobId, profileId!);
       setInterviewStrategy(res.data);
     } catch {
       alert('Failed to generate interview strategy');
     } finally {
       setLoadingStrategy(null);
+    }
+  };
+
+  const handleTriggerScrape = async () => {
+    setScraping(true);
+    setScrapeResults(null);
+    try {
+      // Trigger LinkedIn scraping for CTO roles in Sydney from last 2 hours
+      const res = await api.jobs.triggerScrape({
+        source: 'linkedin',
+        keywords: 'CTO',
+        location: 'Sydney',
+        hours: 2
+      });
+      setScrapeResults(res.data);
+      // Refresh job list after scraping
+      const jobsRes = await api.jobs.list();
+      setJobs(jobsRes.data);
+      alert('Job scraping completed! New jobs have been added.');
+    } catch (error: any) {
+      alert(`Failed to scrape jobs: ${error.response?.data?.detail || error.message}`);
+    } finally {
+      setScraping(false);
     }
   };
 
@@ -171,6 +196,15 @@ export function Jobs() {
     }
   };
 
+  if (!profileId) {
+    return (
+      <div className="card text-center py-12">
+        <p className="text-gray-500 mb-4">Upload your resume first to get started.</p>
+        <Link to="/profile" className="btn-primary">Upload Resume</Link>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -186,11 +220,20 @@ export function Jobs() {
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Job Opportunities</h1>
-        {llmInfo && (
-          <div className="text-xs text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-            LLM: {llmInfo.provider} / {llmInfo.model}
-          </div>
-        )}
+        <div className="flex gap-3">
+          {llmInfo && (
+            <div className="text-xs text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+              LLM: {llmInfo.provider} / {llmInfo.model}
+            </div>
+          )}
+          <button
+            onClick={handleTriggerScrape}
+            disabled={scraping}
+            className="btn-secondary whitespace-nowrap disabled:opacity-50"
+          >
+            {scraping ? 'Scraping...' : 'Scrape Jobs'}
+          </button>
+        </div>
       </div>
 
       <div className="card">

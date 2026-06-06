@@ -83,6 +83,9 @@ export const api = {
     get(profileId: number) {
       return client.get<CareerProfile>(`/api/profile/${profileId}`);
     },
+    getMyProfile() {
+      return client.get<{ profile: CareerProfile | null }>('/api/profile/me');
+    },
     uploadResume(file: File) {
       const formData = new FormData();
       formData.append('file', file);
@@ -135,6 +138,15 @@ export const api = {
     },
     getInterviewStrategy(jobId: number, profileId: number) {
       return client.get<InterviewStrategy>(`/api/jobs/${jobId}/interview-strategy/${profileId}`);
+    },
+    triggerScrape(request: { source?: string; keywords: string; location: string; hours?: number; force?: boolean }) {
+      return client.post(`/api/jobs/scrape/trigger`, request);
+    },
+    triggerIncrementalScrape(hours: number, source?: string) {
+      return client.post(`/api/jobs/scrape/incremental`, { hours, source });
+    },
+    triggerFullScrape(source?: string) {
+      return client.post(`/api/jobs/scrape/full`, { source });
     },
   },
 
