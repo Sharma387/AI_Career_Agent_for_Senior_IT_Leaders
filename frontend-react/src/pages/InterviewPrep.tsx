@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api/client';
-
-const PROFILE_ID = 1;
+import { useAuth } from '../context/AuthContext';
 
 export function InterviewPrep() {
+  const { profileId } = useAuth();
   const [jobId, setJobId] = useState('');
   const [materials, setMaterials] = useState<{ cover_letter: string; resume: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -14,7 +15,7 @@ export function InterviewPrep() {
     setLoading(true);
     setMaterials(null);
     try {
-      const res = await api.jobs.generateMaterials(Number(jobId), PROFILE_ID);
+      const res = await api.jobs.generateMaterials(Number(jobId), profileId!);
       setMaterials(res.data);
     } catch {
       alert('Failed to generate materials. Make sure the job ID is valid.');
@@ -22,6 +23,15 @@ export function InterviewPrep() {
       setLoading(false);
     }
   };
+
+  if (!profileId) {
+    return (
+      <div className="card text-center py-12">
+        <p className="text-gray-500 mb-4">Upload your resume first to get started.</p>
+        <Link to="/profile" className="btn-primary">Upload Resume</Link>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 max-w-3xl">

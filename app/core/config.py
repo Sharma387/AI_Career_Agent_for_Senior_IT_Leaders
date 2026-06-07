@@ -1,6 +1,6 @@
 from pathlib import Path
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -27,6 +27,12 @@ class Settings(BaseSettings):
         description="Nvidia NIM model name",
     )
 
+    ANTHROPIC_API_KEY: str = Field(default="", description="Anthropic API key")
+    ANTHROPIC_MODEL: str = Field(
+        default="claude-sonnet-4-20250514",
+        description="Anthropic model name",
+    )
+
     OLLAMA_BASE_URL: str = Field(
         default="http://localhost:11434",
         description="Ollama server URL",
@@ -37,8 +43,8 @@ class Settings(BaseSettings):
     )
 
     LLM_PROVIDER: str = Field(
-        default="nvidia",
-        description="LLM provider: 'nvidia' (remote) or 'ollama' (local fallback)",
+        default="anthropic",
+        description="LLM provider: 'anthropic' (Claude), 'nvidia' (remote), or 'ollama' (local fallback)",
     )
     EMBEDDING_MODEL: str = Field(
         default="all-MiniLM-L6-v2", description="Sentence-transformers model"
@@ -73,13 +79,37 @@ class Settings(BaseSettings):
     SCHEDULER_TIMEZONE: str = Field(default="Pacific/Auckland", description="Timezone for scheduler (NZ time)")
     SCHEDULER_INCREMENTAL_ENABLED: bool = Field(default=True, description="Enable incremental scraping scheduler")
     SCHEDULER_FULL_ENABLED: bool = Field(default=True, description="Enable full scraping scheduler")
-    SEEK_SCRAPING_ENABLED: bool = Field(default=False, description="Seek scraping enabled (requires implementation)")
+    SEEK_SCRAPING_ENABLED: bool = Field(default=True, description="Enable Seek job scraping via Playwright")
     SEEK_DEFAULT_KEYWORDS: str = Field(default="", description="Default keywords for Seek scraping")
     SEEK_DEFAULT_LOCATION: str = Field(default="", description="Default location for Seek scraping")
+    SEEK_CHROME_PROFILE_PATH: str = Field(
+        default="",
+        description="Path to Chrome user data directory for Seek automation"
+    )
+    SEEK_HEADLESS: bool = Field(default=True, description="Run Playwright in headless mode")
+    SEEK_MAX_PAGES_PER_SEARCH: int = Field(default=3, description="Max result pages per search (1-10)")
+    SEEK_REQUEST_DELAY_MIN: float = Field(default=2.0, description="Min delay between requests (seconds)")
+    SEEK_REQUEST_DELAY_MAX: float = Field(default=5.0, description="Max delay between requests (seconds)")
+    SEEK_DAILY_SCRAPE_HOUR: int = Field(default=7, description="Hour for daily Seek scrape (NZ time, 24-hour format)")
+    SEEK_DAILY_SCRAPE_MINUTE: int = Field(default=0, description="Minute for daily Seek scrape")
+    SEEK_ROLE_PRESETS: str = Field(
+        default="project-manager,sr-project-manager,it-manager,engineering-manager,it-director,cto",
+        description="Comma-separated role preset IDs for scheduled scraping"
+    )
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    LINKEDIN_EXTENSION_ENABLED: bool = Field(default=True, description="Enable LinkedIn extension ingest endpoint")
+
+    LINKEDIN_DEFAULT_KEYWORDS: str = Field(default="", description="Default keywords for LinkedIn scraping")
+    LINKEDIN_DEFAULT_LOCATION: str = Field(default="", description="Default location for LinkedIn scraping")
+
+    # Adzuna Job API configuration
+    ADZUNA_APP_ID: str = Field(default="", description="Adzuna API app_id")
+    ADZUNA_APP_KEY: str = Field(default="", description="Adzuna API app_key")
+    ADZUNA_COUNTRY: str = Field(default="nz", description="Adzuna country code (nz, au, gb, us, etc.)")
+    ADZUNA_RESULTS_PER_PAGE: int = Field(default=20, description="Number of results per Adzuna API call")
+    ADZUNA_MONTHLY_LIMIT: int = Field(default=250, description="Monthly API call limit for Adzuna free tier")
+
+    model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
 settings = Settings()

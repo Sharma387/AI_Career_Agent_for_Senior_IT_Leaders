@@ -140,6 +140,26 @@ class JobScrapingScheduler:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
+    async def _scrape_seek_daily_presets(self):
+        """Daily Seek scraping with role presets."""
+        logger.info("Starting daily Seek scrape with role presets...")
+        try:
+            from app.ingestion.seek_scheduled import SeekScheduledScraper
+
+            scraper = SeekScheduledScraper()
+            result = await scraper.run_daily_scrape()
+
+            if result.get("status") == "disabled":
+                logger.info("Daily Seek scrape skipped (disabled)")
+            else:
+                logger.info(
+                    f"Daily Seek scrape complete: "
+                    f"{result.get('total_new_jobs', 0)} new jobs "
+                    f"across {result.get('presets_run', 0)} presets"
+                )
+        except Exception as e:
+            logger.error(f"Error in daily Seek preset scraping: {e}")
+
     def start(self):
         """Start the scheduler with configured jobs."""
         if self._is_running:
@@ -152,23 +172,21 @@ class JobScrapingScheduler:
 
         # Incremental scraping every 2 hours during business hours (using NZ time settings)
         if settings.SCHEDULER_INCREMENTAL_ENABLED:
-            # Calculate minutes for every 2 hours during business hours
+            # Calculate hours for every 2 hours during business hours
             start_hour = settings.BUSINESS_HOURS_START
             end_hour = settings.BUSINESS_HOURS_END
-            incremental_minutes = []
+            incremental_hours = []
 
             for hour in range(start_hour, end_hour + 1, 2):  # Every 2 hours
-                incremental_minutes.append("0")
-                incremental_minutes.append("30")
+                incremental_hours.append(str(hour))
 
-            minute_str = ",".join(incremental_minutes)
-            hour_str = ",".join([str(h) for h in range(start_hour, end_hour + 1, 2)])
+            hour_str = ",".join(incremental_hours)
 
             self.scheduler.add_job(
                 self._scrape_all_incremental,
                 trigger=CronTrigger(
                     hour=hour_str,  # Every 2 hours during business hours
-                    minute=minute_str,  # At :00 and :30 past each hour
+                    minute="0",  # At the top of the hour
                     timezone=settings.SCHEDULER_TIMEZONE
                 ),
                 id="incremental_job_scraping",
@@ -177,7 +195,7 @@ class JobScrapingScheduler:
             )
             logger.info(
                 f"Added incremental job scraping job "
-                f"(every 2 hours from {start_hour}:00 to {end_hour}:30, "
+                f"(every 2 hours from {start_hour}:00 to {end_hour}:00, "
                 f"timezone: {settings.SCHEDULER_TIMEZONE})"
             )
 
@@ -197,6 +215,25 @@ class JobScrapingScheduler:
             logger.info(
                 f"Added full job scraping job "
                 f"(daily at {settings.FULL_SCRAPE_TIME_HOUR:02d}:{settings.FULL_SCRAPE_TIME_MINUTE:02d}, "
+                f"timezone: {settings.SCHEDULER_TIMEZONE})"
+            )
+
+        # Daily Seek scrape with role presets
+        if settings.SEEK_SCRAPING_ENABLED:
+            self.scheduler.add_job(
+                self._scrape_seek_daily_presets,
+                trigger=CronTrigger(
+                    hour=settings.SEEK_DAILY_SCRAPE_HOUR,
+                    minute=settings.SEEK_DAILY_SCRAPE_MINUTE,
+                    timezone=settings.SCHEDULER_TIMEZONE
+                ),
+                id="seek_daily_preset_scraping",
+                name="Daily Seek Scraping (Role Presets)",
+                replace_existing=True
+            )
+            logger.info(
+                f"Added daily Seek preset scraping job "
+                f"(daily at {settings.SEEK_DAILY_SCRAPE_HOUR:02d}:{settings.SEEK_DAILY_SCRAPE_MINUTE:02d}, "
                 f"timezone: {settings.SCHEDULER_TIMEZONE})"
             )
 

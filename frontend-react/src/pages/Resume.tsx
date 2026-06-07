@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import type { Project } from '../types';
 
 const PROFILE_ID_KEY = 'career_agent_profile_id';
@@ -38,10 +39,11 @@ const emptyProject: Project = {
 };
 
 export function Resume() {
+  const { profileId: authProfileId, setProfileId: setAuthProfileId } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [projects, setProjects] = useState<any[]>([]);
   const [skills, setSkills] = useState<SkillData[]>([]);
-  const [profileId, setProfileId] = useState<number | null>(null);
+  const [profileId, setProfileId] = useState<number | null>(authProfileId);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [showProjectForm, setShowProjectForm] = useState(false);
@@ -92,15 +94,21 @@ export function Resume() {
   };
 
   useEffect(() => {
-    const stored = localStorage.getItem(PROFILE_ID_KEY);
-    if (stored) {
-      const id = Number(stored);
-      setProfileId(id);
-      loadProfile(id).finally(() => setLoading(false));
+    if (authProfileId) {
+      setProfileId(authProfileId);
+      loadProfile(authProfileId).finally(() => setLoading(false));
     } else {
-      setLoading(false);
+      const stored = localStorage.getItem(PROFILE_ID_KEY);
+      if (stored) {
+        const id = Number(stored);
+        setProfileId(id);
+        setAuthProfileId(id);
+        loadProfile(id).finally(() => setLoading(false));
+      } else {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [authProfileId]);
 
   const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -112,6 +120,7 @@ export function Resume() {
       if (!newProfileId) throw new Error('No profile ID returned');
       localStorage.setItem(PROFILE_ID_KEY, String(newProfileId));
       setProfileId(newProfileId);
+      setAuthProfileId(newProfileId);
       await loadProfile(newProfileId);
     } catch {
       alert('Failed to upload resume');

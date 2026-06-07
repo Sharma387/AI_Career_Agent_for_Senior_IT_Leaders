@@ -1,10 +1,10 @@
-name: New MCP server
-version: 0.0.1
+name: My Assistant
+version: 1.0.0
 schema: v1
+
 mcpServers:
-  - name: New MCP server
+  - name: filesystem
     command: npx
     args:
-      - -y
-      - <your-mcp-server>
-    env: {}
+      - "@modelcontextprotocol/server-filesystem"
+      - "/Users/sharma.rajasekar/PycharmProjects/AI_Career_Agent_for_Senior_IT_Leaders"

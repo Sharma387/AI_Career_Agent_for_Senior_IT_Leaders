@@ -3,6 +3,7 @@ from unittest.mock import patch, AsyncMock, MagicMock
 
 from httpx import AsyncClient, ASGITransport
 from app.main import app
+from app.api.auth import get_current_user
 
 
 @pytest.fixture
@@ -37,9 +38,13 @@ def mock_tracking_service():
 
 @pytest.fixture
 async def client():
+    async def override_auth():
+        return None
+    app.dependency_overrides[get_current_user] = override_auth
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
         yield ac
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 @pytest.mark.asyncio

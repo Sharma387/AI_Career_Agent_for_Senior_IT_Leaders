@@ -547,16 +547,18 @@ class JobScrapingService:
         Scrape jobs from a source and store them in the database.
 
         Args:
-            source: Source name ('seek', 'linkedin', etc.)
+            source: Source name ('adzuna', 'seek', 'linkedin', etc.)
             search_params: Search parameters for the source
             db_session: Database session
 
         Returns:
             Dictionary with results statistics
         """
-        if source not in self.adapters:
-            raise ValueError(f"Unsupported source: {source}")
+        # Use Adzuna API for job fetching (preferred approach)
+        if source == "adzuna" or source not in self.adapters:
+            return await self._fetch_from_adzuna(search_params, db_session)
 
+        # Legacy HTML scraping adapters (LinkedIn/Seek) - kept for backwards compatibility
         adapter = self.adapters[source]
         stats = {
             'source': source,
@@ -569,37 +571,29 @@ class JobScrapingService:
 
         try:
             async with adapter:
-                # Scrape raw jobs
                 raw_jobs = await adapter.scrape_jobs(search_params)
                 stats['scraped'] = len(raw_jobs)
 
                 logger.info(f"Scraped {len(raw_jobs)} raw jobs from {source}")
 
-                # Process each job
                 for raw_job in raw_jobs:
                     try:
-                        # Extract standardized job data
                         job_data = adapter.extract_job_data(raw_job)
-
-                        # Check for duplicates
                         external_id = job_data['external_id']
                         source_name = job_data['source']
 
-                        # Query for existing job with same external_id and source
                         result = await db_session.execute(
                             select(JobPosting).where(
                                 JobPosting.source == source_name,
-                                JobPosting.description.like(f"%{external_id}%")  # Simple approach
+                                JobPosting.description.like(f"%{external_id}%")
                             )
                         )
                         existing_job = result.scalar_one_or_none()
 
                         if existing_job:
                             stats['duplicates'] += 1
-                            logger.debug(f"Duplicate job found: {external_id}")
                             continue
 
-                        # Store the job using JobService
                         job_text = f"""
                         Title: {job_data['title']}
                         Company: {job_data['company']}
@@ -620,7 +614,6 @@ class JobScrapingService:
                         if result and 'job_id' in result:
                             stats['new_jobs'] += 1
                             stats['job_ids'].append(result['job_id'])
-                            logger.info(f"Stored new job: {job_data['title']} at {job_data['company']}")
 
                     except Exception as e:
                         stats['errors'] += 1
@@ -631,7 +624,211 @@ class JobScrapingService:
             logger.error(f"Error in scrape_and_store_jobs for {source}: {e}")
             stats['errors'] += 1
 
-        logger.info(f"Finished scraping {source}: {stats}")
+        return stats
+
+    async def _fetch_from_adzuna(
+        self,
+        search_params: Dict[str, Any],
+        db_session: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Fetch jobs from Adzuna API (or fallback) and store them.
+
+        Includes:
+        - Daily duplicate prevention (same search won't hit API twice per day)
+        - Monthly quota tracking (250 calls/month on free tier)
+        - Automatic fallback to free APIs when quota exhausted
+
+        Args:
+            search_params: Search parameters (keywords, location, page, etc.)
+            db_session: Database session
+
+        Returns:
+            Dictionary with results statistics
+        """
+        from app.core.api_usage import can_search, record_search, get_usage_stats
+        from app.ingestion.adzuna_adapter import AdzunaAdapter
+
+        keywords = search_params.get("keywords", "")
+        stats = {
+            'source': f'adzuna_{settings.ADZUNA_COUNTRY}',
+            'scraped': 0,
+            'new_jobs': 0,
+            'duplicates': 0,
+            'errors': 0,
+            'job_ids': [],
+            'provider': 'adzuna',
+        }
+
+        # Check if search is allowed (daily dedup + monthly quota)
+        check = can_search(keywords, provider="adzuna")
+
+        if not check["allowed"]:
+            if check.get("use_fallback"):
+                # Quota exhausted — use fallback
+                logger.info("Adzuna quota exhausted, using fallback provider")
+                return await self._fetch_from_fallback(search_params, db_session)
+            else:
+                # Duplicate search today
+                stats['errors'] = 0
+                stats['message'] = check['reason']
+                return stats
+
+        # Proceed with Adzuna
+        adapter = AdzunaAdapter()
+
+        if not adapter.is_configured:
+            logger.warning("Adzuna not configured, trying fallback")
+            return await self._fetch_from_fallback(search_params, db_session)
+
+        try:
+            jobs = await adapter.search_jobs(search_params)
+            stats['scraped'] = len(jobs)
+
+            # Record the API call
+            record_search(keywords, provider="adzuna", results_count=len(jobs))
+
+            for job_data in jobs:
+                try:
+                    # Check for duplicates by URL
+                    url = job_data.get('url', '')
+                    if url:
+                        result = await db_session.execute(
+                            select(JobPosting).where(JobPosting.url == url)
+                        )
+                        existing_job = result.scalar_one_or_none()
+                        if existing_job:
+                            stats['duplicates'] += 1
+                            continue
+
+                    # Build job text for parsing and storage
+                    job_text = f"""{job_data['title']}
+{job_data['company']}
+Location: {job_data['location']}
+Salary: {job_data.get('salary_range', 'Not specified')}
+Source: {job_data['source']}
+URL: {job_data.get('url', '')}
+
+Description:
+{job_data['description']}"""
+
+                    result = await self.job_service.add_job(
+                        job_text=job_text,
+                        source=job_data['source'],
+                        db_session=db_session
+                    )
+
+                    if result and 'job_id' in result:
+                        stats['new_jobs'] += 1
+                        stats['job_ids'].append(result['job_id'])
+
+                        # Update the job record with URL and salary
+                        job_result = await db_session.execute(
+                            select(JobPosting).where(JobPosting.id == result['job_id'])
+                        )
+                        job_record = job_result.scalar_one_or_none()
+                        if job_record:
+                            job_record.url = job_data.get('url', '')
+                            if job_data.get('salary_range'):
+                                job_record.salary_range = job_data['salary_range']
+
+                except Exception as e:
+                    stats['errors'] += 1
+                    logger.error(f"Error storing Adzuna job: {e}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"Error fetching from Adzuna: {e}")
+            stats['errors'] += 1
+
+        # Include usage info in response
+        usage = get_usage_stats()
+        stats['usage'] = usage
+        logger.info(f"Adzuna fetch complete: {stats['new_jobs']} new, {stats['duplicates']} dupes (API calls this month: {usage['monthly_calls']}/{usage['monthly_limit']})")
+        return stats
+
+    async def _fetch_from_fallback(
+        self,
+        search_params: Dict[str, Any],
+        db_session: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Fetch jobs from free fallback APIs (no API key needed).
+        Used when Adzuna quota is exhausted.
+        """
+        from app.ingestion.fallback_adapter import FallbackJobAdapter
+        from app.core.api_usage import can_search, record_search
+
+        keywords = search_params.get("keywords", "")
+        stats = {
+            'source': 'fallback_free',
+            'scraped': 0,
+            'new_jobs': 0,
+            'duplicates': 0,
+            'errors': 0,
+            'job_ids': [],
+            'provider': 'fallback',
+        }
+
+        # Check daily dedup for fallback too
+        check = can_search(keywords, provider="fallback")
+        if not check["allowed"] and check.get("duplicate"):
+            stats['message'] = check['reason']
+            return stats
+
+        try:
+            adapter = FallbackJobAdapter()
+            jobs = await adapter.search_jobs(search_params)
+            stats['scraped'] = len(jobs)
+
+            # Record even fallback calls for daily dedup
+            record_search(keywords, provider="fallback", results_count=len(jobs))
+
+            for job_data in jobs:
+                try:
+                    url = job_data.get('url', '')
+                    if url:
+                        result = await db_session.execute(
+                            select(JobPosting).where(JobPosting.url == url)
+                        )
+                        if result.scalar_one_or_none():
+                            stats['duplicates'] += 1
+                            continue
+
+                    job_text = f"""{job_data['title']}
+{job_data['company']}
+Location: {job_data['location']}
+
+Description:
+{job_data['description']}"""
+
+                    result = await self.job_service.add_job(
+                        job_text=job_text,
+                        source=job_data['source'],
+                        db_session=db_session
+                    )
+
+                    if result and 'job_id' in result:
+                        stats['new_jobs'] += 1
+                        stats['job_ids'].append(result['job_id'])
+
+                        job_result = await db_session.execute(
+                            select(JobPosting).where(JobPosting.id == result['job_id'])
+                        )
+                        job_record = job_result.scalar_one_or_none()
+                        if job_record and url:
+                            job_record.url = url
+
+                except Exception as e:
+                    stats['errors'] += 1
+                    logger.error(f"Error storing fallback job: {e}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"Error in fallback fetch: {e}")
+            stats['errors'] += 1
+
+        logger.info(f"Fallback fetch complete: {stats}")
         return stats
 
     async def scrape_multiple_sources(
@@ -644,13 +841,16 @@ class JobScrapingService:
         Scrape jobs from multiple sources.
 
         Args:
-            sources: List of source names to scrape
+            sources: List of source names to scrape (defaults to ['adzuna'] if None)
             search_params: Search parameters to use for all sources
             db_session: Database session
 
         Returns:
-- Dictionary with combined results statistics
+            Dictionary with combined results statistics
         """
+        if not sources:
+            sources = ['adzuna']
+
         combined_stats = {
             'sources': sources,
             'total_scraped': 0,
@@ -661,35 +861,23 @@ class JobScrapingService:
             'all_job_ids': []
         }
 
-        # Scrape each source
         for source in sources:
-            if source in self.adapters:
-                try:
-                    source_stats = await self.scrape_and_store_jobs(
-                        source, search_params, db_session
-                    )
+            try:
+                source_stats = await self.scrape_and_store_jobs(
+                    source, search_params, db_session
+                )
 
-                    combined_stats['source_results'][source] = source_stats
-                    combined_stats['total_scraped'] += source_stats['scraped']
-                    combined_stats['total_new_jobs'] += source_stats['new_jobs']
-                    combined_stats['total_duplicates'] += source_stats['duplicates']
-                    combined_stats['total_errors'] += source_stats['errors']
-                    combined_stats['all_job_ids'].extend(source_stats['job_ids'])
+                combined_stats['source_results'][source] = source_stats
+                combined_stats['total_scraped'] += source_stats['scraped']
+                combined_stats['total_new_jobs'] += source_stats['new_jobs']
+                combined_stats['total_duplicates'] += source_stats['duplicates']
+                combined_stats['total_errors'] += source_stats['errors']
+                combined_stats['all_job_ids'].extend(source_stats['job_ids'])
 
-                except Exception as e:
-                    logger.error(f"Error scraping source {source}: {e}")
-                    combined_stats['source_results'][source] = {
-                        'error': str(e),
-                        'scraped': 0,
-                        'new_jobs': 0,
-                        'duplicates': 0,
-                        'errors': 1
-                    }
-                    combined_stats['total_errors'] += 1
-            else:
-                logger.warning(f"Unknown source: {source}")
+            except Exception as e:
+                logger.error(f"Error scraping source {source}: {e}")
                 combined_stats['source_results'][source] = {
-                    'error': f'Unsupported source: {source}',
+                    'error': str(e),
                     'scraped': 0,
                     'new_jobs': 0,
                     'duplicates': 0,

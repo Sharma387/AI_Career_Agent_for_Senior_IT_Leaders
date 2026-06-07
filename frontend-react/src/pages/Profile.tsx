@@ -346,7 +346,32 @@ export function Profile() {
             {uploading ? 'Uploading...' : profile ? 'Replace Resume' : 'Upload Resume'}
             <input type="file" accept=".pdf,.doc,.docx,.txt" onChange={handleResumeUpload} className="hidden" />
           </label>
+          {profileId && (
+            <>
+              <a href={api.profile.downloadResumeHtml(profileId)} download className="btn-secondary inline-block">
+                Download HTML
+              </a>
+              <a href={api.profile.downloadResumeDocx(profileId)} download className="btn-secondary inline-block">
+                Download Word
+              </a>
+            </>
+          )}
         </div>
+
+        {/* Resume Preview */}
+        {profileId && (
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">Resume Preview</h3>
+            <div className="bg-white rounded-lg border overflow-hidden">
+              <iframe
+                src={api.profile.previewResumeHtml(profileId)}
+                className="w-full border-0"
+                style={{ minHeight: '500px' }}
+                title="Resume Preview"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Basic Info Section */}

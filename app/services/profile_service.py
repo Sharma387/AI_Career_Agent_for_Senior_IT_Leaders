@@ -34,7 +34,7 @@ class ProfileService:
             self._parser = ResumeParser()
         return self._parser
 
-    async def upload_resume(self, file_path: str, db_session: AsyncSession) -> dict:
+    async def upload_resume(self, file_path: str, db_session: AsyncSession, user_id: int | None = None) -> dict:
         raw_text = self.parser.parse(file_path)
         sections = self.parser.extract_sections(raw_text)
         expanded = self.expander.expand_profile(raw_text)
@@ -50,6 +50,7 @@ class ProfileService:
             summary=expanded.get("summary", ""),
             raw_resume_text=raw_text,
         )
+        profile.user_id = user_id
         db_session.add(profile)
         await db_session.flush()
 

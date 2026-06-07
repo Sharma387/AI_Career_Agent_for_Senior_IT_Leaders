@@ -161,7 +161,7 @@ class TrackingService:
 
             output.append({
                 "application_id": app.id,
-                "status": app.status,
+                "status": app.status.value if hasattr(app.status, 'value') else str(app.status),
                 "date_applied": app.date_applied.isoformat() if app.date_applied else None,
                 "last_updated": app.last_updated.isoformat() if app.last_updated else None,
                 "feedback_notes": app.feedback_notes,
@@ -170,7 +170,7 @@ class TrackingService:
                     "id": job.id,
                     "title": job.title,
                     "company": job.company,
-                    "location": job.location,
+                    "location": job.location or "",
                 } if job else None,
             })
 

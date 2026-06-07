@@ -65,7 +65,9 @@ export interface JobPosting {
   description: string;
   location: string;
   seniority_level: string;
+  salary_range: string;
   source: string;
+  url: string;
   created_at: string;
 }
 

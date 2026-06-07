@@ -7,6 +7,18 @@ logger = logging.getLogger(__name__)
 
 
 def get_llm(temperature: float = 0.7) -> BaseChatModel:
+    if settings.LLM_PROVIDER == "anthropic":
+        if not settings.ANTHROPIC_API_KEY:
+            logger.warning("ANTHROPIC_API_KEY not set, falling back to Ollama")
+            return _create_ollama(temperature)
+        from langchain_anthropic import ChatAnthropic
+
+        return ChatAnthropic(
+            model=settings.ANTHROPIC_MODEL,
+            api_key=settings.ANTHROPIC_API_KEY,
+            temperature=temperature,
+        )
+
     if settings.LLM_PROVIDER == "nvidia":
         if not settings.NVIDIA_API_KEY:
             logger.warning("NVIDIA_API_KEY not set, falling back to Ollama")

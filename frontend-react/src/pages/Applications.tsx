@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import type { Application, ApplicationStats } from '../types';
-
-const PROFILE_ID = 1;
 
 interface Materials {
   application_id: number;
@@ -14,6 +13,7 @@ interface Materials {
 }
 
 export function Applications() {
+  const { profileId } = useAuth();
   const [applications, setApplications] = useState<Application[]>([]);
   const [stats, setStats] = useState<ApplicationStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,14 +26,20 @@ export function Applications() {
   const [activeTab, setActiveTab] = useState<'resume' | 'cover_letter'>('resume');
 
   useEffect(() => {
-    Promise.all([api.applications.list(PROFILE_ID), api.applications.getStats(PROFILE_ID)])
+    if (!profileId) {
+      setLoading(false);
+      return;
+    }
+    Promise.all([api.applications.list(profileId), api.applications.getStats(profileId)])
       .then(([appsRes, statsRes]) => {
         setApplications(appsRes.data);
         setStats(statsRes.data);
       })
-      .catch(() => null)
+      .catch((err) => {
+        console.error('Failed to load applications:', err);
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [profileId]);
 
   const handleStatusUpdate = async (appId: number, newStatus: string) => {
     try {
@@ -81,6 +87,15 @@ export function Applications() {
     }
   };
 
+  if (!profileId) {
+    return (
+      <div className="card text-center py-12">
+        <p className="text-gray-500 mb-4">Upload your resume first to get started.</p>
+        <Link to="/profile" className="btn-primary">Upload Resume</Link>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -114,8 +129,8 @@ export function Applications() {
             <div key={app.application_id} className="card">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <h3 className="font-semibold">{app.job.title}</h3>
-                  <p className="text-gray-600">{app.job.company} • {app.job.location}</p>
+                  <h3 className="font-semibold">{app.job?.title || 'Unknown Job'}</h3>
+                  <p className="text-gray-600">{app.job?.company || ''} {app.job?.location ? `• ${app.job.location}` : ''}</p>
                   <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
                     <span>Applied: {new Date(app.date_applied).toLocaleDateString()}</span>
                     <span>Updated: {new Date(app.last_updated).toLocaleDateString()}</span>
@@ -219,8 +234,12 @@ export function Applications() {
                     rows={15}
                   />
                 ) : (
-                  <div className="bg-white rounded-lg border p-6 max-h-96 overflow-y-auto whitespace-pre-wrap text-sm">
-                    {viewingMaterials.resume_version_text || 'No resume generated yet'}
+                  <div className="bg-white rounded-lg border max-h-96 overflow-y-auto">
+                    <iframe
+                      src={api.applications.previewResumeHtml(viewingMaterials.application_id)}
+                      className="w-full min-h-[384px] border-0"
+                      title="Resume Preview"
+                    />
                   </div>
                 )}
                 {!editing && (
@@ -252,8 +271,12 @@ export function Applications() {
                     rows={10}
                   />
                 ) : (
-                  <div className="bg-white rounded-lg border p-6 max-h-96 overflow-y-auto whitespace-pre-wrap text-sm">
-                    {viewingMaterials.cover_letter_text || 'No cover letter generated yet'}
+                  <div className="bg-white rounded-lg border max-h-96 overflow-y-auto">
+                    <iframe
+                      src={api.applications.previewCoverLetterHtml(viewingMaterials.application_id)}
+                      className="w-full min-h-[384px] border-0"
+                      title="Cover Letter Preview"
+                    />
                   </div>
                 )}
                 {!editing && (

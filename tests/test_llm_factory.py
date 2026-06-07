@@ -40,7 +40,7 @@ def test_get_llm_ollama(mock_settings):
 
 
 def test_get_llm_unknown_provider(mock_settings):
-    mock_settings.LLM_PROVIDER = "anthropic"
+    mock_settings.LLM_PROVIDER = "unknown_provider"
     with pytest.raises(ValueError, match="Unknown LLM_PROVIDER"):
         get_llm()
 

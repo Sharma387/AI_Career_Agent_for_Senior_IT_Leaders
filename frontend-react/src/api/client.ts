@@ -109,6 +109,9 @@ export const api = {
       return client.delete(`/api/profile/${profileId}/projects/${projectId}`);
     },
     downloadResumeHtml(profileId: number) {
+      return `/api/profile/${profileId}/resume/html?download=true`;
+    },
+    previewResumeHtml(profileId: number) {
       return `/api/profile/${profileId}/resume/html`;
     },
     downloadResumeDocx(profileId: number) {
@@ -142,11 +145,23 @@ export const api = {
     triggerScrape(request: { source?: string; keywords: string; location: string; hours?: number; force?: boolean }) {
       return client.post(`/api/jobs/scrape/trigger`, request);
     },
+    getSearchUsage() {
+      return client.get(`/api/jobs/search/usage`);
+    },
     triggerIncrementalScrape(hours: number, source?: string) {
       return client.post(`/api/jobs/scrape/incremental`, { hours, source });
     },
     triggerFullScrape(source?: string) {
       return client.post(`/api/jobs/scrape/full`, { source });
+    },
+    triggerSchedulerIncremental() {
+      return client.post(`/api/scheduler/trigger-incremental`);
+    },
+    triggerSchedulerFull() {
+      return client.post(`/api/scheduler/trigger-full`);
+    },
+    getSchedulerStatus() {
+      return client.get(`/api/scheduler/status`);
     },
   },
 
@@ -219,9 +234,15 @@ export const api = {
       });
     },
     downloadResumeHtml(applicationId: number) {
-      return `/api/applications/${applicationId}/resume/html`;
+      return `/api/applications/${applicationId}/resume/html?download=true`;
     },
     downloadCoverLetterHtml(applicationId: number) {
+      return `/api/applications/${applicationId}/cover-letter/html?download=true`;
+    },
+    previewResumeHtml(applicationId: number) {
+      return `/api/applications/${applicationId}/resume/html`;
+    },
+    previewCoverLetterHtml(applicationId: number) {
       return `/api/applications/${applicationId}/cover-letter/html`;
     },
     downloadResumeDocx(applicationId: number) {

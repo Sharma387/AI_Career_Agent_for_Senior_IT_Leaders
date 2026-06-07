@@ -1,3 +1,5 @@
+from typing import Any, Dict, List
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -484,8 +486,43 @@ class JobService:
                 "company": j.company,
                 "location": j.location,
                 "seniority_level": j.seniority_level,
+                "salary_range": j.salary_range or "",
                 "source": j.source,
+                "url": j.url or "",
+                "description": j.description or "",
                 "created_at": j.created_at.isoformat() if j.created_at else None,
             }
             for j in jobs
         ]
+
+    async def scrape_and_store_jobs(
+        self,
+        source: str,
+        search_params: Dict[str, Any],
+        db_session: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Scrape jobs from a source and store them in the database.
+
+        This method delegates to the JobScrapingService.
+        """
+        from app.ingestion.job_scraper import JobScrapingService
+
+        scraper = JobScrapingService()
+        return await scraper.scrape_and_store_jobs(source, search_params, db_session)
+
+    async def scrape_multiple_sources(
+        self,
+        sources: List[str],
+        search_params: Dict[str, Any],
+        db_session: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Scrape jobs from multiple sources.
+
+        This method delegates to the JobScrapingService.
+        """
+        from app.ingestion.job_scraper import JobScrapingService
+
+        scraper = JobScrapingService()
+        return await scraper.scrape_multiple_sources(sources, search_params, db_session)

@@ -1,0 +1,220 @@
+/* AI Career Agent - LinkedIn Extension Styles */
+
+/* === Popup Styles === */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: #1a1a1a;
+  background: #ffffff;
+  min-width: 320px;
+}
+
+.popup-container {
+  padding: 20px;
+  max-width: 360px;
+}
+
+.popup-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0a66c2;
+  margin-bottom: 2px;
+}
+
+.popup-subtitle {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 16px;
+}
+
+/* Status indicator */
+.status-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #999;
+  flex-shrink: 0;
+}
+
+.status-dot.status-connected {
+  background: #28a745;
+}
+
+.status-dot.status-error {
+  background: #dc3545;
+}
+
+.status-dot.status-checking {
+  background: #ffc107;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.status-text {
+  font-size: 12px;
+  color: #555;
+}
+
+/* Form */
+.form-group {
+  margin-bottom: 14px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #0a66c2;
+  box-shadow: 0 0 0 2px rgba(10, 102, 194, 0.1);
+}
+
+.form-group input::placeholder {
+  color: #aaa;
+}
+
+/* Buttons */
+.button-group {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.btn {
+  flex: 1;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-primary {
+  background: #0a66c2;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #004182;
+}
+
+.btn-secondary {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.btn-secondary:hover {
+  background: #e0e0e0;
+}
+
+/* Messages */
+.message {
+  display: none;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.message-success {
+  background: #d4edda;
+  color: #155724;
+}
+
+.message-error {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.message-info {
+  background: #d1ecf1;
+  color: #0c5460;
+}
+
+/* Capture Section */
+.capture-section {
+  margin-bottom: 16px;
+}
+
+.btn-capture {
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #28a745;
+  color: white;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.btn-capture:hover:not(:disabled) {
+  background: #218838;
+}
+
+.btn-capture:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn-capture:disabled {
+  cursor: not-allowed;
+}
+
+.capture-result {
+  display: none;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Divider */
+.divider {
+  border: none;
+  border-top: 1px solid #eee;
+  margin: 16px 0;
+}

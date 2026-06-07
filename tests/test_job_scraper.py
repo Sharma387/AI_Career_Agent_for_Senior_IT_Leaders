@@ -142,13 +142,19 @@ class TestJobScrapingService:
 
     @pytest.mark.asyncio
     async def test_scrape_and_store_jobs_invalid_source(self, scraping_service):
-        """Test scraping with invalid source."""
-        with pytest.raises(ValueError, match="Unsupported source"):
-            await scraping_service.scrape_and_store_jobs(
+        """Test scraping with unknown source routes to Adzuna (returns stats dict)."""
+        with patch("app.ingestion.job_scraper.settings") as mock_settings:
+            mock_settings.ADZUNA_APP_ID = ""
+            mock_settings.ADZUNA_APP_KEY = ""
+            mock_settings.ADZUNA_COUNTRY = "nz"
+            result = await scraping_service.scrape_and_store_jobs(
                 source="invalid_source",
                 search_params={},
                 db_session=AsyncMock()
             )
+            # Should return stats with errors since Adzuna is not configured
+            assert isinstance(result, dict)
+            assert 'errors' in result
 
     @pytest.mark.asyncio
     async def test_scrape_multiple_sources(self, scraping_service):

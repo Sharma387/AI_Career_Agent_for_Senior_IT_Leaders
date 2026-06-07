@@ -60,7 +60,28 @@ export function Jobs() {
   const [loadingStrategy, setLoadingStrategy] = useState<number | null>(null);
   const [scraping, setScraping] = useState(false);
   const [scrapeResults, setScrapeResults] = useState<any | null>(null);
+  const [targetRole, setTargetRole] = useState('project-manager');
+  const [customKeywords, setCustomKeywords] = useState('');
+  const [searchLocation, setSearchLocation] = useState('');
+  const [apiUsage, setApiUsage] = useState<{ monthly_calls: number; monthly_limit: number; remaining: number; searches_today: number; quota_exhausted: boolean } | null>(null);
+  const [filterSource, setFilterSource] = useState('all');
+  const [filterSeniority, setFilterSeniority] = useState('all');
+  const [filterLocation, setFilterLocation] = useState('');
+  const [filterSort, setFilterSort] = useState<'newest' | 'oldest' | 'company'>('newest');
+  const [filterSalaryOnly, setFilterSalaryOnly] = useState(false);
   
+
+  const ROLE_PRESETS: Record<string, { label: string; keywords: string }> = {
+    'project-manager': { label: 'Project Manager', keywords: 'project manager' },
+    'sr-project-manager': { label: 'Senior Project Manager', keywords: 'senior project manager' },
+    'it-manager': { label: 'IT Manager', keywords: 'IT manager' },
+    'engineering-manager': { label: 'Engineering Manager', keywords: 'engineering manager' },
+    'it-director': { label: 'IT Director / Head of IT', keywords: 'IT director' },
+    'cto': { label: 'CTO / VP Engineering', keywords: 'CTO' },
+    'scrum-master': { label: 'Scrum Master / Agile Coach', keywords: 'scrum master' },
+    'business-analyst': { label: 'Business Analyst', keywords: 'business analyst IT' },
+    'custom': { label: 'Custom Search', keywords: '' },
+  };
 
   useEffect(() => {
     api.jobs.list()
@@ -69,6 +90,9 @@ export function Jobs() {
       .finally(() => setLoading(false));
     api.llm.getInfo()
       .then((res) => setLlmInfo(res.data))
+      .catch(() => null);
+    api.jobs.getSearchUsage()
+      .then((res) => setApiUsage(res.data))
       .catch(() => null);
   }, []);
 
@@ -143,23 +167,44 @@ export function Jobs() {
   };
 
   const handleTriggerScrape = async () => {
+    const preset = ROLE_PRESETS[targetRole];
+    const keywords = targetRole === 'custom' ? customKeywords : preset.keywords;
+
+    if (!keywords.trim()) {
+      alert('Please enter search keywords');
+      return;
+    }
+
     setScraping(true);
     setScrapeResults(null);
     try {
-      // Trigger LinkedIn scraping for CTO roles in Sydney from last 2 hours
       const res = await api.jobs.triggerScrape({
-        source: 'linkedin',
-        keywords: 'CTO',
-        location: 'Sydney',
-        hours: 2
+        source: 'adzuna',
+        keywords,
+        location: searchLocation,
+        hours: undefined
       });
       setScrapeResults(res.data);
-      // Refresh job list after scraping
-      const jobsRes = await api.jobs.list();
+
+      // Refresh job list and usage stats
+      const [jobsRes, usageRes] = await Promise.all([
+        api.jobs.list(),
+        api.jobs.getSearchUsage()
+      ]);
       setJobs(jobsRes.data);
-      alert('Job scraping completed! New jobs have been added.');
+      setApiUsage(usageRes.data);
+
+      const newJobs = res.data.new_jobs || 0;
+      const message = res.data.message;
+      if (message) {
+        alert(message);
+      } else if (newJobs > 0) {
+        alert(`Found ${newJobs} new job${newJobs > 1 ? 's' : ''}!`);
+      } else {
+        alert(`No new jobs found. ${res.data.duplicates || 0} already in your list.`);
+      }
     } catch (error: any) {
-      alert(`Failed to scrape jobs: ${error.response?.data?.detail || error.message}`);
+      alert(`Failed to fetch jobs: ${error.response?.data?.detail || error.message}`);
     } finally {
       setScraping(false);
     }
@@ -220,20 +265,86 @@ export function Jobs() {
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Job Opportunities</h1>
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
           {llmInfo && (
             <div className="text-xs text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
               LLM: {llmInfo.provider} / {llmInfo.model}
             </div>
           )}
-          <button
-            onClick={handleTriggerScrape}
-            disabled={scraping}
-            className="btn-secondary whitespace-nowrap disabled:opacity-50"
-          >
-            {scraping ? 'Scraping...' : 'Scrape Jobs'}
-          </button>
+          {apiUsage && (
+            <div className={`text-xs px-3 py-1 rounded-full ${apiUsage.remaining < 20 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+              API: {apiUsage.remaining}/{apiUsage.monthly_limit} remaining
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* Fetch New Jobs Panel */}
+      <div className="card">
+        <h2 className="text-lg font-semibold mb-4">Fetch New Jobs</h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Target Role</label>
+            <select
+              value={targetRole}
+              onChange={(e) => setTargetRole(e.target.value)}
+              className="input-field w-full"
+            >
+              {Object.entries(ROLE_PRESETS).map(([key, { label }]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Location (optional)</label>
+            <input
+              type="text"
+              value={searchLocation}
+              onChange={(e) => setSearchLocation(e.target.value)}
+              className="input-field w-full"
+              placeholder="e.g. Auckland, Sydney"
+            />
+          </div>
+
+          <div className="flex items-end">
+            <button
+              onClick={handleTriggerScrape}
+              disabled={scraping || (targetRole === 'custom' && !customKeywords.trim())}
+              className="btn-primary w-full disabled:opacity-50"
+            >
+              {scraping ? 'Searching...' : 'Fetch New Jobs'}
+            </button>
+          </div>
+        </div>
+
+        {targetRole === 'custom' && (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Custom Keywords</label>
+            <input
+              type="text"
+              value={customKeywords}
+              onChange={(e) => setCustomKeywords(e.target.value)}
+              className="input-field w-full"
+              placeholder='e.g. "Scrum Master" OR "Agile Coach"'
+            />
+          </div>
+        )}
+
+        {apiUsage && (
+          <div className="flex items-center gap-4 text-xs text-gray-500">
+            <span>Searches today: {apiUsage.searches_today}</span>
+            <span>·</span>
+            <span>Monthly usage: {apiUsage.monthly_calls}/{apiUsage.monthly_limit}</span>
+            {apiUsage.quota_exhausted && (
+              <>
+                <span>·</span>
+                <span className="text-orange-600 font-medium">Using free fallback (limited results)</span>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="card">
@@ -255,51 +366,145 @@ export function Jobs() {
 
       {jobs.length === 0 ? (
         <div className="card text-center py-12">
-          <p className="text-gray-500">No jobs available yet. Add a job posting above to get started.</p>
+          <p className="text-gray-500">No jobs available yet. Fetch new jobs above or paste a job description manually.</p>
         </div>
       ) : (
         <div className="space-y-4">
-          {jobs.map((job) => (
-            <div key={job.id} className="card">
+          {/* Filters */}
+          <div className="card bg-gray-50 border-gray-200">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Source</label>
+                <select value={filterSource} onChange={(e) => setFilterSource(e.target.value)} className="input-field w-full text-sm py-1.5">
+                  <option value="all">All Sources</option>
+                  {[...new Set(jobs.map(j => j.source))].map(src => (
+                    <option key={src} value={src}>{src}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Seniority</label>
+                <select value={filterSeniority} onChange={(e) => setFilterSeniority(e.target.value)} className="input-field w-full text-sm py-1.5">
+                  <option value="all">All Levels</option>
+                  {[...new Set(jobs.map(j => j.seniority_level).filter(Boolean))].map(level => (
+                    <option key={level} value={level}>{level}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Location</label>
+                <input
+                  type="text"
+                  value={filterLocation}
+                  onChange={(e) => setFilterLocation(e.target.value)}
+                  className="input-field w-full text-sm py-1.5"
+                  placeholder="Filter by location..."
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Sort</label>
+                <select value={filterSort} onChange={(e) => setFilterSort(e.target.value as any)} className="input-field w-full text-sm py-1.5">
+                  <option value="newest">Newest First</option>
+                  <option value="oldest">Oldest First</option>
+                  <option value="company">By Company</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                  <input type="checkbox" checked={filterSalaryOnly} onChange={(e) => setFilterSalaryOnly(e.target.checked)} className="rounded" />
+                  Has Salary
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {(() => {
+            let filtered = [...jobs];
+            if (filterSource !== 'all') filtered = filtered.filter(j => j.source === filterSource);
+            if (filterSeniority !== 'all') filtered = filtered.filter(j => j.seniority_level === filterSeniority);
+            if (filterLocation) filtered = filtered.filter(j => j.location?.toLowerCase().includes(filterLocation.toLowerCase()));
+            if (filterSalaryOnly) filtered = filtered.filter(j => j.salary_range && j.salary_range.trim() !== '');
+            if (filterSort === 'newest') filtered.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+            if (filterSort === 'oldest') filtered.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+            if (filterSort === 'company') filtered.sort((a, b) => (a.company || '').localeCompare(b.company || ''));
+
+            return (
+              <>
+                <p className="text-sm text-gray-500">{filtered.length} of {jobs.length} job{jobs.length !== 1 ? 's' : ''} shown</p>
+                {filtered.map((job) => (
+            <div key={job.id} className="card hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold">{job.title}</h3>
-                  <p className="text-gray-600">{job.company}</p>
-                  <div className="flex items-center gap-3 mt-2 text-sm text-gray-500">
-                    <span>{job.location}</span>
-                    <span>•</span>
-                    <span>{job.seniority_level}</span>
-                    <span>•</span>
-                    <span>{job.source}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-semibold truncate">{job.title}</h3>
+                    {job.url && (
+                      <a
+                        href={job.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 text-sm whitespace-nowrap"
+                      >
+                        Apply →
+                      </a>
+                    )}
                   </div>
-                  <p className="text-gray-700 mt-3 line-clamp-3">{job.description}</p>
+                  <p className="text-gray-700 font-medium">{job.company}</p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1 text-sm text-gray-500">
+                    {job.location && <span className="bg-gray-100 px-2 py-0.5 rounded">{job.location}</span>}
+                    {job.seniority_level && <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{job.seniority_level}</span>}
+                    {job.salary_range && <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded">{job.salary_range}</span>}
+                    <span className="text-gray-400">·</span>
+                    <span className="text-xs">{job.source}</span>
+                    {job.created_at && (
+                      <>
+                        <span className="text-gray-400">·</span>
+                        <span className="text-xs">{new Date(job.created_at).toLocaleDateString()}</span>
+                      </>
+                    )}
+                  </div>
+                  {job.description && (
+                    <p className="text-gray-600 text-sm mt-2 line-clamp-2">{job.description}</p>
+                  )}
                 </div>
-                <div className="flex items-center gap-2 ml-4">
-                  <button
-                    onClick={() => handleMatch(job.id)}
-                    disabled={matching === job.id}
-                    className="btn-primary whitespace-nowrap disabled:opacity-50"
+              </div>
+              <div className="flex items-center gap-2 mt-3 pt-3 border-t">
+                <button
+                  onClick={() => handleMatch(job.id)}
+                  disabled={matching === job.id}
+                  className="btn-primary text-sm px-3 py-1.5 disabled:opacity-50"
+                >
+                  {matching === job.id ? 'Matching...' : 'Match Me'}
+                </button>
+                <button
+                  onClick={() => handleGenerateMaterials(job.id)}
+                  disabled={generating === job.id}
+                  className="btn-secondary text-sm px-3 py-1.5 disabled:opacity-50"
+                >
+                  {generating === job.id ? 'Generating...' : 'Generate Materials'}
+                </button>
+                <button
+                  onClick={() => handleGetInterviewStrategy(job.id)}
+                  disabled={loadingStrategy === job.id}
+                  className="btn-secondary text-sm px-3 py-1.5 disabled:opacity-50"
+                >
+                  {loadingStrategy === job.id ? 'Loading...' : 'Interview Prep'}
+                </button>
+                {job.url && (
+                  <a
+                    href={job.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-auto text-sm text-blue-600 hover:text-blue-800 font-medium"
                   >
-                    {matching === job.id ? 'Matching...' : 'Match Me'}
-                  </button>
-                  <button
-                    onClick={() => handleGenerateMaterials(job.id)}
-                    disabled={generating === job.id}
-                    className="btn-secondary whitespace-nowrap disabled:opacity-50"
-                  >
-                    {generating === job.id ? 'Generating...' : 'Generate Materials'}
-                  </button>
-                  <button
-                    onClick={() => handleGetInterviewStrategy(job.id)}
-                    disabled={loadingStrategy === job.id}
-                    className="btn-secondary whitespace-nowrap disabled:opacity-50"
-                  >
-                    {loadingStrategy === job.id ? 'Loading...' : 'AI Interview Strategy'}
-                  </button>
-                </div>
+                    View Original Posting ↗
+                  </a>
+                )}
               </div>
             </div>
           ))}
+              </>
+            );
+          })()}
         </div>
       )}
 

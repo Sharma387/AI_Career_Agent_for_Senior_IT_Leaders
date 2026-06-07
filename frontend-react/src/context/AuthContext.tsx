@@ -5,8 +5,10 @@ import { api } from '../api/client';
 interface AuthContextType {
   user: User | null;
   token: string | null;
+  profileId: number | null;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, fullName: string) => Promise<void>;
+  setProfileId: (id: number) => void;
   logout: () => void;
   loading: boolean;
 }
@@ -16,15 +18,25 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [profileId, setProfileId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadUser = useCallback(async () => {
     try {
       const response = await api.auth.me();
       setUser(response.data as User);
+      try {
+        const profileRes = await api.profile.getMyProfile();
+        if (profileRes.data.profile) {
+          setProfileId(profileRes.data.profile.id);
+        }
+      } catch {
+        // Profile may not exist yet
+      }
     } catch {
       setToken(null);
       setUser(null);
+      setProfileId(null);
       localStorage.removeItem('token');
     } finally {
       setLoading(false);
@@ -59,10 +71,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
+    setProfileId(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, profileId, setProfileId, login, register, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

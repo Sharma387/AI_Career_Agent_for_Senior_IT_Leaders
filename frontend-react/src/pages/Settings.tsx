@@ -18,9 +18,84 @@ export function Settings() {
   const [questionsMessage, setQuestionsMessage] = useState('')
   const [questionsMessageType, setQuestionsMessageType] = useState<'success' | 'error'>('success')
 
+  // Scheduler state
+  const [schedulerStatus, setSchedulerStatus] = useState<'idle' | 'loading' | 'running' | 'stopped' | 'error'>('idle')
+  const [schedulerInfo, setSchedulerInfo] = useState<{
+    isRunning: boolean;
+    nextIncrementalRun: string | null;
+    nextFullRun: string | null;
+    jobs: Array<{ id: string; name: string; nextRun: string | null }>;
+  } | null>(null)
+  const [schedulerLoading, setSchedulerLoading] = useState(false)
+  const [schedulerMessage, setSchedulerMessage] = useState<string>('')
+  const [schedulerMessageType, setSchedulerMessageType] = useState<'success' | 'error'>('success')
+  const [schedulerHistory, setSchedulerHistory] = useState<Array<{
+    timestamp: string;
+    source: string;
+    type: 'incremental' | 'full';
+    newJobs: number;
+    duplicates: number;
+    errors: number;
+  }>>([])
+
   useEffect(() => {
     loadQuestions()
+    loadSchedulerInfo()
   }, [])
+
+  const loadSchedulerInfo = async () => {
+    setSchedulerLoading(true)
+    setSchedulerStatus('loading')
+    try {
+      const res = await api.jobs.getSchedulerStatus()
+      const data = res.data
+
+      setSchedulerStatus(data.isRunning ? 'running' : 'stopped')
+      setSchedulerInfo({
+        isRunning: data.isRunning,
+        nextIncrementalRun: data.nextIncrementalRun,
+        nextFullRun: data.nextFullRun,
+        jobs: data.jobs
+      })
+
+      // Scraping history will be populated by a real history API in the future
+      setSchedulerHistory([])
+    } catch (err: any) {
+      setSchedulerMessage('Failed to load scheduler info')
+      setSchedulerMessageType('error')
+      setSchedulerStatus('error')
+    } finally {
+      setSchedulerLoading(false)
+    }
+  }
+
+  const handleTriggerIncrementalScrape = async () => {
+    setSchedulerMessage('')
+    try {
+      await api.jobs.triggerSchedulerIncremental()
+      setSchedulerMessage('Incremental scrape triggered successfully!')
+      setSchedulerMessageType('success')
+      // Refresh scheduler info
+      await loadSchedulerInfo()
+    } catch (err: any) {
+      setSchedulerMessage(err.response?.data?.detail || 'Failed to trigger incremental scrape')
+      setSchedulerMessageType('error')
+    }
+  }
+
+  const handleTriggerFullScrape = async () => {
+    setSchedulerMessage('')
+    try {
+      await api.jobs.triggerSchedulerFull()
+      setSchedulerMessage('Full scrape triggered successfully!')
+      setSchedulerMessageType('success')
+      // Refresh scheduler info
+      await loadSchedulerInfo()
+    } catch (err: any) {
+      setSchedulerMessage(err.response?.data?.detail || 'Failed to trigger full scrape')
+      setSchedulerMessageType('error')
+    }
+  }
 
   const loadQuestions = async () => {
     setQuestionsLoading(true)
@@ -241,6 +316,111 @@ export function Settings() {
               {savingQuestions ? 'Saving...' : 'Save Answers'}
             </button>
           </form>
+        )}
+      </div>
+
+      {/* Scheduler Settings */}
+      <div className="card">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Job Scraping Scheduler</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Configure and monitor automated job scraping from LinkedIn and other sources.
+        </p>
+
+        {schedulerMessage && (
+          <div
+            className={`mb-4 p-4 rounded-lg text-sm ${
+              schedulerMessageType === 'success'
+                ? 'bg-green-50 border border-green-200 text-green-700'
+                : 'bg-red-50 border border-red-200 text-red-700'
+            }`}
+          >
+            {schedulerMessage}
+          </div>
+        )}
+
+        {schedulerLoading ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
+          </div>
+        ) : schedulerInfo ? (
+          <>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <span className="font-medium">Scheduler Status:</span>
+                <span className={schedulerStatus === 'running' ? 'text-green-600' : 'text-red-600'}>
+                  {schedulerStatus === 'running' ? 'Running' : 'Stopped'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white rounded-lg p-4 border">
+                  <h3 className="font-medium mb-2">Next Incremental Scrape</h3>
+                  <p className="text-sm text-gray-600">{schedulerInfo.nextIncrementalRun}</p>
+                </div>
+                <div className="bg-white rounded-lg p-4 border">
+                  <h3 className="font-medium mb-2">Next Full Scrape</h3>
+                  <p className="text-sm text-gray-600">{schedulerInfo.nextFullRun}</p>
+                </div>
+              </div>
+
+              <div className="mt-6">
+                <h3 className="font-medium mb-3">Scheduled Jobs</h3>
+                {schedulerInfo.jobs.map((job, index) => (
+                  <div key={index} className="border-t pt-4 first:border-t-0">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{job.name}</span>
+                      <span className="text-sm text-gray-500">{job.nextRun}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6">
+                <h3 className="font-medium mb-3">Manual Triggers</h3>
+                <div className="space-y-3">
+                  <button
+                    onClick={handleTriggerIncrementalScrape}
+                    className="btn-secondary w-full"
+                  >
+                    Trigger Incremental Scrape (Last 2 Hours)
+                  </button>
+                  <button
+                    onClick={handleTriggerFullScrape}
+                    className="btn-primary w-full"
+                  >
+                    Trigger Full Scrape
+                  </button>
+                </div>
+              </div>
+
+              {schedulerHistory.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="font-medium mb-3">Recent Scraping History</h3>
+                  <div className="space-y-2">
+                    {schedulerHistory.map((record, index) => (
+                      <div key={index} className="bg-white rounded-lg p-4 border">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="font-medium">{record.source} ({record.type})</span>
+                            <span className="text-xs text-gray-500 block">{record.timestamp}</span>
+                          </div>
+                          <div className="text-right space-x-2">
+                            <span className="text-sm font-medium text-green-600">+{record.newJobs}</span>
+                            <span className="text-sm text-gray-500">{record.duplicates} duplicates</span>
+                            {record.errors > 0 && (
+                              <span className="text-sm text-red-500">{record.errors} errors</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <p className="text-gray-500 text-center py-8">Loading scheduler information...</p>
         )}
       </div>
     </div>

@@ -2,12 +2,14 @@
 Database base module providing async session context manager.
 """
 
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import async_session_factory
 
 
+@asynccontextmanager
 async def get_async_session_context() -> AsyncGenerator[AsyncSession, None]:
     """
     Async context manager for database sessions.

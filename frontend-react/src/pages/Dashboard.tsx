@@ -4,20 +4,22 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import type { ApplicationStats, Application } from '../types';
 
-const PROFILE_ID = 1;
-
 export function Dashboard() {
-  const { user } = useAuth();
+  const { user, profileId } = useAuth();
   const [stats, setStats] = useState<ApplicationStats | null>(null);
   const [recentApps, setRecentApps] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!profileId) {
+      setLoading(false);
+      return;
+    }
     const loadDashboard = async () => {
       try {
         const [statsRes, appsRes] = await Promise.all([
-          api.applications.getStats(PROFILE_ID),
-          api.applications.list(PROFILE_ID),
+          api.applications.getStats(profileId),
+          api.applications.list(profileId),
         ]);
         setStats(statsRes.data);
         setRecentApps(appsRes.data.slice(0, 5));
@@ -28,7 +30,7 @@ export function Dashboard() {
       }
     };
     loadDashboard();
-  }, []);
+  }, [profileId]);
 
   if (loading) {
     return (

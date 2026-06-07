@@ -1,12 +1,14 @@
 import os
 import tempfile
 import logging
+import time
+from collections import defaultdict
 from datetime import datetime
 from io import BytesIO
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy import select
@@ -25,9 +27,15 @@ from app.services.document_service import (
     generate_cover_letter_docx,
 )
 from app.core.config import settings
+from app.ingestion.seek_models import SeekSearchParams
+from app.ingestion.linkedin_models import LinkedInJobIngestRequest, LinkedInJobIngestResponse
+from app.ingestion.deduplication import is_duplicate
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Rate limiting for LinkedIn ingest endpoint: max 10 requests per minute per user
+_linkedin_ingest_rate: dict[int, list[float]] = defaultdict(list)
 
 profile_service = ProfileService()
 job_service = JobService()
@@ -122,6 +130,7 @@ async def get_profile(profile_id: int, db_session: AsyncSession = Depends(get_db
 @router.get("/api/profile/{profile_id}/resume/html")
 async def download_base_resume_html(
     profile_id: int,
+    download: bool = Query(default=False, description="Force download instead of inline display"),
     db_session: AsyncSession = Depends(get_db),
 ):
     result = await db_session.execute(
@@ -137,10 +146,13 @@ async def download_base_resume_html(
         profile_data = await _get_profile_structured(profile_id, db_session)
         html = render_resume_html(profile_data)
 
+    headers = {}
+    if download:
+        headers["Content-Disposition"] = f"attachment; filename=resume_{profile_id}.html"
     return StreamingResponse(
         BytesIO(html.encode()),
         media_type="text/html",
-        headers={"Content-Disposition": f"attachment; filename=resume_{profile_id}.html"},
+        headers=headers,
     )
 
 
@@ -184,6 +196,99 @@ async def add_job(
 ):
     result = await job_service.add_job(request.text, source=request.source, db_session=db_session)
     return result
+
+
+@router.post("/api/jobs/ingest/linkedin")
+async def ingest_linkedin_job(
+    request: LinkedInJobIngestRequest,
+    db_session: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    """
+    Receive and store a LinkedIn job captured by the browser extension.
+
+    Validates the incoming job data, checks for duplicates, and stores
+    new jobs through the existing JobService pipeline with source="linkedin_ext".
+
+    Rate limited to 10 requests per minute per user.
+    """
+    # Rate limiting: max 10 requests per minute per user
+    now = time.time()
+    user_timestamps = _linkedin_ingest_rate[user.id]
+    # Remove timestamps older than 60 seconds
+    _linkedin_ingest_rate[user.id] = [
+        ts for ts in user_timestamps if now - ts < 60
+    ]
+    if len(_linkedin_ingest_rate[user.id]) >= 10:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded: maximum 10 requests per minute",
+        )
+    _linkedin_ingest_rate[user.id].append(now)
+
+    # Deduplication check (URL match, then title+company)
+    duplicate = await is_duplicate(
+        url=request.url,
+        title=request.title,
+        company=request.company,
+        db_session=db_session,
+    )
+    if duplicate:
+        return JSONResponse(
+            status_code=200,
+            content=LinkedInJobIngestResponse(
+                status="duplicate",
+                message=f"Job '{request.title}' at '{request.company}' already exists",
+            ).model_dump(),
+        )
+
+    # Build job text from LinkedIn data for the pipeline
+    parts = [
+        f"Title: {request.title}",
+        f"Company: {request.company}",
+    ]
+    if request.location:
+        parts.append(f"Location: {request.location}")
+    if request.salary_range:
+        parts.append(f"Salary: {request.salary_range}")
+    if request.seniority_level:
+        parts.append(f"Seniority Level: {request.seniority_level}")
+    if request.employment_type:
+        parts.append(f"Employment Type: {request.employment_type}")
+    parts.append(f"\nDescription:\n{request.description}")
+
+    job_text = "\n".join(parts)
+
+    # Store via existing pipeline
+    result = await job_service.add_job(
+        job_text, source="linkedin_ext", db_session=db_session
+    )
+
+    if result and "job_id" in result:
+        # Update the job record with URL and salary (similar to Adzuna adapter)
+        job_result = await db_session.execute(
+            select(JobPosting).where(JobPosting.id == result["job_id"])
+        )
+        job_record = job_result.scalar_one_or_none()
+        if job_record:
+            job_record.url = request.url
+            if request.salary_range:
+                job_record.salary_range = request.salary_range
+
+        return JSONResponse(
+            status_code=201,
+            content=LinkedInJobIngestResponse(
+                status="created",
+                job_id=result["job_id"],
+                message=f"Job '{request.title}' at '{request.company}' stored successfully",
+            ).model_dump(),
+        )
+
+    # Fallback error case
+    raise HTTPException(
+        status_code=500,
+        detail="Failed to store job through pipeline",
+    )
 
 
 @router.get("/api/jobs")
@@ -458,6 +563,7 @@ async def _get_profile_structured(profile_id: int, db_session: AsyncSession) -> 
 @router.get("/api/applications/{application_id}/resume/html")
 async def download_resume_html(
     application_id: int,
+    download: bool = Query(default=False, description="Force download instead of inline display"),
     db_session: AsyncSession = Depends(get_db),
 ):
     result = await db_session.execute(
@@ -479,16 +585,20 @@ async def download_resume_html(
     profile_data["resume_text"] = resume_text
 
     html = render_resume_html(profile_data, job_data)
+    headers = {}
+    if download:
+        headers["Content-Disposition"] = f"attachment; filename=resume_{application_id}.html"
     return StreamingResponse(
         BytesIO(html.encode()),
         media_type="text/html",
-        headers={"Content-Disposition": f"attachment; filename=resume_{application_id}.html"},
+        headers=headers,
     )
 
 
 @router.get("/api/applications/{application_id}/cover-letter/html")
 async def download_cover_letter_html(
     application_id: int,
+    download: bool = Query(default=False, description="Force download instead of inline display"),
     db_session: AsyncSession = Depends(get_db),
 ):
     result = await db_session.execute(
@@ -508,10 +618,13 @@ async def download_cover_letter_html(
 
     cover_letter_text = application.cover_letter_text or ""
     html = render_cover_letter_html(profile_data, job_data, cover_letter_text)
+    headers = {}
+    if download:
+        headers["Content-Disposition"] = f"attachment; filename=cover_letter_{application_id}.html"
     return StreamingResponse(
         BytesIO(html.encode()),
         media_type="text/html",
-        headers={"Content-Disposition": f"attachment; filename=cover_letter_{application_id}.html"},
+        headers=headers,
     )
 
 
@@ -590,6 +703,101 @@ async def get_llm_info():
     }
 
 
+@router.get("/api/jobs/search/usage")
+async def get_search_usage():
+    """Get API usage statistics for job searching."""
+    from app.core.api_usage import get_usage_stats
+    return get_usage_stats()
+
+
+# Scheduler Status Endpoints
+@router.get("/api/scheduler/status")
+async def get_scheduler_status(
+    db_session: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user),
+):
+    """
+    Get the current status of the job scraping scheduler.
+    Requires authentication.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Return scheduler status from the global instance
+    from app.core.scheduler.job_scheduler import job_scheduler
+
+    if not job_scheduler.is_running():
+        return {
+            "isRunning": False,
+            "nextIncrementalRun": None,
+            "nextFullRun": None,
+            "jobs": []
+        }
+
+    jobs = job_scheduler.get_jobs()
+    next_incremental = None
+    next_full = None
+
+    # Find next runs for our specific jobs
+    for job in jobs:
+        if job.id == "incremental_job_scraping":
+            next_incremental = job.next_run_time.strftime("%Y-%m-%d %H:%M:%S %Z") if job.next_run_time else None
+        elif job.id == "full_job_scraping":
+            next_full = job.next_run_time.strftime("%Y-%m-%d %H:%M:%S %Z") if job.next_run_time else None
+
+    return {
+        "isRunning": job_scheduler.is_running(),
+        "nextIncrementalRun": next_incremental,
+        "nextFullRun": next_full,
+        "jobs": [
+            {
+                "id": job.id,
+                "name": job.name,
+                "nextRun": job.next_run_time.strftime("%Y-%m-%d %H:%M:%S %Z") if job.next_run_time else None
+            }
+            for job in jobs
+        ]
+    }
+
+
+@router.post("/api/scheduler/trigger-incremental")
+async def trigger_scheduler_incremental(
+    db_session: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user),
+):
+    """
+    Manually trigger an incremental scrape via the scheduler.
+    Requires authentication.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Trigger the incremental scrape function directly
+    from app.core.scheduler.job_scheduler import job_scheduler
+    await job_scheduler._scrape_all_incremental()
+
+    return {"message": "Incremental scrape triggered successfully"}
+
+
+@router.post("/api/scheduler/trigger-full")
+async def trigger_scheduler_full(
+    db_session: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user),
+):
+    """
+    Manually trigger a full scrape via the scheduler.
+    Requires authentication.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Trigger the full scrape function directly
+    from app.core.scheduler.job_scheduler import job_scheduler
+    await job_scheduler._scrape_all_full()
+
+    return {"message": "Full scrape triggered successfully"}
+
+
 # External Scheduler API Endpoints for Job Scraping
 # These endpoints are designed to be triggered by external schedulers (cron, cloud schedulers, etc.)
 
@@ -645,7 +853,7 @@ async def trigger_job_scrape(
 
         if sources_to_scrape:
             # Scrape specific source
-            if request.source not in ['seek', 'linkedin']:
+            if request.source not in ['seek', 'linkedin', 'adzuna']:
                 raise HTTPException(status_code=400, detail=f"Unsupported source: {request.source}")
 
             result = await job_service.scrape_and_store_jobs(
@@ -673,7 +881,7 @@ async def trigger_job_scrape(
             # Format response for multiple sources
             response = {
                 "trigger_type": "manual" if request.force else "scheduled",
-                "sources": ['seek', 'linkedin'],  # Currently supported sources
+                "sources": ['adzuna'],  # Primary supported source
                 "search_params": search_params,
                 "results": result,
                 "timestamp": datetime.utcnow().isoformat() + "Z"
@@ -752,6 +960,62 @@ async def trigger_full_scrape(
     )
 
     return await trigger_job_scrape(request, db_session, user)
+
+
+@router.post("/api/jobs/scrape/seek")
+async def scrape_seek_jobs(
+    params: SeekSearchParams,
+    db_session: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    """
+    Trigger a Seek.co.nz job scrape using Playwright automation.
+
+    Accepts search parameters (keywords, location, optional filters) and
+    invokes the SeekScrapingService to browse Seek using the configured
+    Chrome profile.
+
+    Requires JWT authentication.
+
+    Returns:
+        SeekScrapeResult with counts of new jobs, duplicates, and errors.
+    """
+    from app.ingestion.seek_models import BrowserProfileLocked
+
+    try:
+        from app.ingestion.seek_scraper_service import SeekScrapingService
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Playwright is not installed. Install it with: "
+                "pip install playwright && python -m playwright install chromium"
+            ),
+        )
+
+    try:
+        service = SeekScrapingService(
+            chrome_profile_path=settings.SEEK_CHROME_PROFILE_PATH,
+            headless=settings.SEEK_HEADLESS,
+        )
+        result = await service.scrape_and_store(params, db_session)
+        return result
+    except BrowserProfileLocked as e:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Chrome profile is locked by another process. Close other Chrome instances and retry. {e}",
+        )
+    except Exception as e:
+        if "playwright" in str(e).lower() and ("install" in str(e).lower() or "not found" in str(e).lower()):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Playwright browser not available. Install with: "
+                    "python -m playwright install chromium"
+                ),
+            )
+        logger.error(f"Error during Seek scrape: {e}")
+        raise HTTPException(status_code=500, detail=f"Seek scraping failed: {e}")
 
 
 @router.get("/api/match/{job_id}/{profile_id}")

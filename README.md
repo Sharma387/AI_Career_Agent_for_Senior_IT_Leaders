@@ -6,7 +6,7 @@ An AI-powered career intelligence system that uses RAG (Retrieval-Augmented Gene
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                     Streamlit Frontend                              │
+│                    React Frontend (TypeScript)                      │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐   │
 │  │Dashboard │  │ Job Board│  │ Tracker  │  │ Insights         │   │
 │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────────┬─────────┘   │
@@ -26,7 +26,7 @@ An AI-powered career intelligence system that uses RAG (Retrieval-Augmented Gene
 │             │                                       │              │
 │  ┌──────────▼───────────────────────────────────────▼──────────┐   │
 │  │                   Agent Layer                                │   │
-│  │  JobMatcherAgent  ResumeAgent  InsightAgent                 │   │
+│  │  LLM Matching Agent  Insight Agent  Career Strategy Agent    │   │
 │  └──────────┬───────────────────────────────────────┬──────────┘   │
 │             │                                       │              │
 │  ┌──────────▼───────────────────────────────────────▼──────────┐   │
@@ -46,7 +46,7 @@ An AI-powered career intelligence system that uses RAG (Retrieval-Augmented Gene
 
 | Layer          | Technology                                    |
 |----------------|-----------------------------------------------|
-| Frontend       | Streamlit (Python)                            |
+| Frontend       | React (TypeScript) with Tailwind CSS          |
 | Backend        | Python 3.11+, FastAPI, Pydantic               |
 | RAG Framework  | LangChain + ChromaDB                          |
 | LLM            | Nvidia NIM (meta/llama-3.1-8b-instruct)       |
@@ -74,7 +74,7 @@ ai-career-agent/
 │   │   └── application_rag.py     # Application history RAG
 │   ├── agents/
 │   │   ├── __init__.py
-│   │   ├── job_matcher_agent.py   # Job matching with LLM
+│   │   ├── llm_matcher_agent.py   # LLM-powered job matching
 │   │   ├── resume_agent.py        # Resume/cover letter generation
 │   │   └── insight_agent.py       # Career insights analysis
 │   ├── services/
@@ -87,11 +87,28 @@ ai-career-agent/
 │   │   └── models.py              # SQLAlchemy models
 │   └── ingestion/
 │       ├── __init__.py
-│       ├── resume_parser.py       # PDF/DOCX/TXT parsing
-│       ├── job_parser.py          # Job description extraction
-│       └── career_expander.py     # LLM-powered career expansion
-├── frontend/
-│   └── streamlit_app.py           # Streamlit UI
+│       ├── linkedin_scraper.py    # LinkedIn job scraping
+│       ├── seek_scraper.py        # Seek job scraping
+│       └── job_scraper.py         # Unified job scraping interface
+├── frontend-react/
+│   ├── public/
+│   └── src/
+│       ├── api/
+│       │   └── client.ts          # API client with scheduler endpoints
+│       ├── components/
+│       │   └── ...                # Reusable components
+│       ├── context/
+│       │   └── AuthContext.tsx    # Authentication context
+│       ├── pages/
+│       │   ├── Applications.tsx   # Application tracking
+│       │   ├── Dashboard.tsx      # Main dashboard
+│       │   ├── InterviewPrep.tsx  # Interview preparation
+│       │   ├── Jobs.tsx           # Job board with scrape controls
+│       │   ├── Register.tsx       # User registration
+│       │   ├── Resume.tsx         # Profile resume management
+│       │   └── Settings.tsx       # User settings with scheduler monitoring
+│       ├── types/                 # TypeScript type definitions
+│       └── App.tsx                # Main application component
 ├── data/
 │   ├── resumes/                   # Resume files
 │   ├── jobs/                      # Job descriptions
@@ -150,11 +167,13 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 **Terminal 2 - Frontend:**
 
 ```bash
-streamlit run frontend/streamlit_app.py
+cd frontend-react
+npm install
+npm run dev
 ```
 
 Backend API docs: http://localhost:8000/docs
-Frontend UI: http://localhost:8501
+Frontend UI: http://localhost:5173
 
 ## API Endpoints
 
@@ -174,6 +193,17 @@ Frontend UI: http://localhost:8501
 | GET    | `/api/jobs`                      | List all jobs                  |
 | POST   | `/api/jobs/{job_id}/match`       | Run job matching analysis      |
 | POST   | `/api/jobs/{job_id}/generate-materials` | Generate resume/cover letter |
+| POST   | `/api/jobs/scrape/trigger`       | Trigger job scraping (manual/external) |
+| POST   | `/api/jobs/scrape/incremental`   | Trigger incremental job scraping |
+| POST   | `/api/jobs/scrape/full`          | Trigger full job scraping      |
+
+### Scheduler
+
+| Method | Endpoint                         | Description                    |
+|--------|----------------------------------|--------------------------------|
+| GET    | `/api/scheduler/status`          | Get scheduler status and next run times |
+| POST   | `/api/scheduler/trigger-incremental` | Manually trigger incremental scrape |
+| POST   | `/api/scheduler/trigger-full`    | Manually trigger full scrape   |
 
 ### Applications
 
@@ -232,16 +262,44 @@ curl -X POST http://localhost:8000/api/applications/track \
 
 Environment variables in `.env`:
 
-| Variable            | Default                                     | Description                             |
-|---------------------|---------------------------------------------|-----------------------------------------|
-| `LLM_PROVIDER`      | `nvidia`                                    | `nvidia` (remote) or `ollama` (local)   |
-| `NVIDIA_API_KEY`    | —                                           | Required if provider=nvidia             |
-| `NVIDIA_BASE_URL`   | `https://integrate.api.nvidia.com/v1`       | Nvidia NIM API endpoint                 |
-| `NVIDIA_MODEL`      | `meta/llama-3.1-8b-instruct`                | Nvidia NIM model                        |
-| `OLLAMA_BASE_URL`   | `http://localhost:11434`                    | Ollama server URL (local fallback)      |
-| `OLLAMA_MODEL`      | `llama3.1:8b`                               | Ollama model to use                     |
-| `EMBEDDING_MODEL`   | `all-MiniLM-L6-v2`                          | Sentence-transformer model for RAG      |
-| `DEBUG`             | `true`                                      | Enable debug logging                    |
+| Variable                        | Default                                     | Description                                                                 |
+|---------------------------------|---------------------------------------------|-----------------------------------------------------------------------------|
+| `LLM_PROVIDER`                  | `nvidia`                                    | `nvidia` (remote) or `ollama` (local)                                       |
+| `NVIDIA_API_KEY`                | —                                           | Required if provider=nvidia                                                 |
+| `NVIDIA_BASE_URL`               | `https://integrate.api.nvidia.com/v1`       | Nvidia NIM API endpoint                                                     |
+| `NVIDIA_MODEL`                  | `meta/llama-3.1-8b-instruct`                | Nvidia NIM model                                                            |
+| `OLLAMA_BASE_URL`               | `http://localhost:11434`                    | Ollama server URL (local fallback)                                          |
+| `OLLAMA_MODEL`                  | `llama3.1:8b`                               | Ollama model to use                                                         |
+| `EMBEDDING_MODEL`               | `all-MiniLM-L6-v2`                          | Sentence-transformer model for RAG                                          |
+| `DEBUG`                         | `true`                                      | Enable debug logging                                                        |
+| `LINKEDIN_SCRAPING_ENABLED`     | `false`                                     | Enable LinkedIn job scraping                                                |
+| `LINKEDIN_EMAIL`                | —                                           | LinkedIn email for authentication (if scraping enabled)                     |
+| `LINKEDIN_PASSWORD`             | —                                           | LinkedIn password for authentication (if scraping enabled)                  |
+| `SEEK_SCRAPING_ENABLED`         | `false`                                     | Enable Seek job scraping                                                    |
+| `SEEK_DEFAULT_KEYWORDS`         | —                                           | Default keywords for Seek scraping                                          |
+| `SEEK_DEFAULT_LOCATION`         | —                                           | Default location for Seek scraping                                          |
+| `SCHEDULER_TIMEZONE`            | `Pacific/Auckland`                          | Timezone for scheduler (NZ time)                                            |
+| `BUSINESS_HOURS_START`          | `8`                                         | Start hour for business hours scraping (NZ time, 24-hour format)            |
+| `BUSINESS_HOURS_END`            | `18`                                        | End hour for business hours scraping (NZ time, 24-hour format)              |
+| `INCREMENTAL_SCRAPE_HOURS`      | `2`                                         | Hours back for incremental scrape during business hours                     |
+| `FULL_SCRAPE_TIME_HOUR`         | `2`                                         | Hour for daily full scrape (NZ time, 24-hour format)                        |
+| `FULL_SCRAPE_TIME_MINUTE`       | `0`                                         | Minute for daily full scrape (NZ time)                                      |
+| `SCHEDULER_INCREMENTAL_ENABLED` | `true`                                      | Enable incremental scraping scheduler                                       |
+| `SCHEDULER_FULL_ENABLED`        | `true`                                      | Enable full scraping scheduler                                              |
+
+### Job Scraping Scheduler Configuration
+
+The AI Career Agent includes an internal scheduler for automated job scraping from LinkedIn and Seek. The scheduler runs two types of jobs:
+
+1. **Incremental Scraping**: Runs every 2 hours during business hours to capture recently posted jobs
+2. **Full Scraping**: Runs once daily at 2 AM NZ time for comprehensive job collection
+
+To enable job scraping:
+- Set `LINKEDIN_SCRAPING_ENABLED=true` and provide LinkedIn credentials
+- Set `SEEK_SCRAPING_ENABLED=true` (once Seek scraping is implemented)
+- Adjust scheduling parameters as needed (business hours, scrape intervals, etc.)
+
+The scheduler automatically starts when the application begins and shuts down gracefully when the application stops.
 
 ### Using Local LLM (Ollama)
 
