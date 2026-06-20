@@ -1,8 +1,13 @@
+import logging
 import re
 from pathlib import Path
 
 import docx2txt
 from pypdf import PdfReader
+
+from app.ingestion.ocr_extractor import extract_text_with_ocr
+
+logger = logging.getLogger(__name__)
 
 
 class ResumeParser:
@@ -29,7 +34,19 @@ class ResumeParser:
         parser = parsers.get(ext)
         if not parser:
             raise ValueError(f"Unsupported file format: {ext}")
-        return parser(file_path)
+
+        text = parser(file_path)
+
+        # OCR fallback for scanned PDFs with minimal text extraction
+        if len(text.strip()) < 300 and ext == ".pdf":
+            logger.info(
+                f"Normal extraction yielded {len(text.strip())} chars, attempting OCR fallback"
+            )
+            ocr_text = extract_text_with_ocr(file_path)
+            if ocr_text and len(ocr_text.strip()) > len(text.strip()):
+                text = ocr_text
+
+        return text
 
     def extract_sections(self, text: str) -> dict:
         sections = {

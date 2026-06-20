@@ -1,10 +1,14 @@
 import json
+import logging
 import re
+import warnings
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.core.config import settings
 from app.core.llm_factory import get_llm
+
+logger = logging.getLogger(__name__)
 
 
 SYSTEM_PROMPT = """You are an expert career coach and resume analyst for senior IT leaders.
@@ -59,6 +63,40 @@ You must respond with valid JSON matching this structure:
 Respond ONLY with the JSON object. No other text."""
 
 
+STRUCTURED_EXPAND_PROMPT = """You are an expert career coach for senior IT leaders.
+Given this structured career data, expand into projects with STAR stories and achievements.
+
+RULES:
+- Only expand on what is explicitly provided. Do NOT hallucinate or invent details.
+- Generate STAR stories from the experience entries.
+- Create project entries from the most significant accomplishments in each role.
+- Group and expand skills logically.
+
+Respond with valid JSON matching this structure:
+{
+  "summary": "A comprehensive 3-4 sentence professional summary",
+  "detailed_projects": [
+    {
+      "title": "project or initiative name",
+      "description": "expanded narrative",
+      "role": "your role",
+      "technologies": ["tech1", "tech2"],
+      "impact": "measurable business impact",
+      "star_stories": [{"situation": "...", "task": "...", "action": "...", "result": "..."}]
+    }
+  ],
+  "skills_by_category": {
+    "leadership": ["skill1"],
+    "technical": ["skill1"],
+    "methodologies": ["skill1"]
+  },
+  "key_achievements": ["achievement1"],
+  "interview_stories": [{"situation": "...", "task": "...", "action": "...", "result": "..."}]
+}
+
+Respond ONLY with the JSON object."""
+
+
 class CareerExpander:
 
     def __init__(self):
@@ -70,7 +108,62 @@ class CareerExpander:
             self._llm = get_llm(temperature=0.3)
         return self._llm
 
+    def expand_from_parsed(self, parsed_resume: dict) -> dict:
+        """
+        Expand a pre-parsed structured resume into projects with STAR stories.
+
+        Takes the structured output from AI parser (not raw text), using only
+        the experience[] and skills{} to generate expanded content.
+        Much faster since structured input = fewer tokens.
+        """
+        # Build concise structured input from parsed data
+        structured_input = {
+            "name": parsed_resume.get("full_name", ""),
+            "headline": parsed_resume.get("headline", ""),
+            "summary": parsed_resume.get("summary", ""),
+            "experience": parsed_resume.get("experience", []),
+            "skills": parsed_resume.get("skills", {}),
+            "certifications": parsed_resume.get("certifications", []),
+        }
+
+        user_content = f"STRUCTURED CAREER DATA:\n\n{json.dumps(structured_input, indent=2)}"
+
+        messages = [
+            SystemMessage(content=STRUCTURED_EXPAND_PROMPT),
+            HumanMessage(content=user_content),
+        ]
+
+        try:
+            response = self.llm.invoke(messages)
+            raw = response.content.strip()
+
+            if raw.startswith("```"):
+                raw = re.sub(r"^```\w*\n?", "", raw)
+                raw = re.sub(r"\n?```$", "", raw)
+
+            profile = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning("Career expander returned non-JSON, using fallback")
+            profile = self._fallback_from_parsed(parsed_resume)
+        except Exception as e:
+            logger.error(f"Career expansion from parsed data failed: {e}")
+            profile = self._fallback_from_parsed(parsed_resume)
+
+        return self._ensure_defaults(profile)
+
     def expand_profile(self, resume_text: str, projects_raw: list[dict] = None) -> dict:
+        """
+        Expand raw resume text into a detailed career profile.
+
+        .. deprecated::
+            Use expand_from_parsed() with pre-parsed structured data for
+            faster processing and fewer tokens.
+        """
+        warnings.warn(
+            "expand_profile(raw_text) is deprecated. Use expand_from_parsed(parsed_resume) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         user_content = f"RESUME:\n\n{resume_text}"
 
         if projects_raw:
@@ -110,6 +203,32 @@ class CareerExpander:
                 "interview_stories": [],
             }
 
+        return self._ensure_defaults(profile)
+
+    def _fallback_from_parsed(self, parsed_resume: dict) -> dict:
+        """Create basic expanded profile from parsed data without LLM."""
+        projects = []
+        for exp in parsed_resume.get("experience", []):
+            if isinstance(exp, dict):
+                projects.append({
+                    "title": exp.get("title", "") or exp.get("company", ""),
+                    "description": exp.get("description", ""),
+                    "role": exp.get("title", ""),
+                    "technologies": [],
+                    "impact": "",
+                    "star_stories": [],
+                })
+
+        return {
+            "summary": parsed_resume.get("summary", ""),
+            "detailed_projects": projects,
+            "skills_by_category": parsed_resume.get("skills", {}),
+            "key_achievements": [],
+            "interview_stories": [],
+        }
+
+    def _ensure_defaults(self, profile: dict) -> dict:
+        """Ensure all expected keys exist with correct types."""
         profile.setdefault("summary", "")
         profile.setdefault("detailed_projects", [])
         profile.setdefault("skills_by_category", {})

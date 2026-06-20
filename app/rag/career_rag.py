@@ -15,7 +15,115 @@ class CareerRAG:
         )
         self.splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
 
+    def ingest_granular(self, profile_id: int, parsed: dict, expanded: dict):
+        """
+        Ingest profile data as granular, section-level chunks for better RAG retrieval.
+
+        Creates separate embeddings for:
+        - Each experience entry
+        - Each project
+        - Skills summary
+        - Certifications
+
+        Each chunk gets metadata: candidate_id, section, title
+        """
+        docs = []
+        candidate_id = str(profile_id)
+
+        # One document per experience entry
+        for exp in parsed.get("experience", []):
+            if isinstance(exp, dict):
+                title = exp.get("title", "")
+                company = exp.get("company", "")
+                text = (
+                    f"Role: {title} at {company}\n"
+                    f"Dates: {exp.get('dates', '')}\n"
+                    f"Location: {exp.get('location', '')}\n"
+                    f"Description: {exp.get('description', '')}\n"
+                    f"Achievements: {'; '.join(exp.get('bullets', []))}"
+                )
+                if text.strip():
+                    docs.append(Document(
+                        page_content=text,
+                        metadata={
+                            "candidate_id": candidate_id,
+                            "section": "experience",
+                            "title": f"{title} at {company}",
+                        }
+                    ))
+
+        # One document per project (from expanded data)
+        for project in expanded.get("detailed_projects", []):
+            if isinstance(project, dict):
+                title = project.get("title", "")
+                star_stories = project.get("star_stories", [])
+                star_text = ""
+                if star_stories:
+                    for story in star_stories:
+                        if isinstance(story, dict):
+                            star_text += (
+                                f"Situation: {story.get('situation', '')} "
+                                f"Task: {story.get('task', '')} "
+                                f"Action: {story.get('action', '')} "
+                                f"Result: {story.get('result', '')}\n"
+                            )
+                        else:
+                            star_text += str(story) + "\n"
+
+                text = (
+                    f"Project: {title}\n"
+                    f"Role: {project.get('role', '')}\n"
+                    f"Description: {project.get('description', '')}\n"
+                    f"Technologies: {', '.join(project.get('technologies', []))}\n"
+                    f"Impact: {project.get('impact', '')}\n"
+                    f"STAR Stories: {star_text}"
+                )
+                if text.strip():
+                    docs.append(Document(
+                        page_content=text,
+                        metadata={
+                            "candidate_id": candidate_id,
+                            "section": "project",
+                            "title": title,
+                        }
+                    ))
+
+        # Skills summary as one document
+        skills = parsed.get("skills", {})
+        if isinstance(skills, dict) and skills:
+            skills_text_parts = []
+            for category, skill_list in skills.items():
+                if isinstance(skill_list, list) and skill_list:
+                    skills_text_parts.append(f"{category}: {', '.join(skill_list)}")
+            if skills_text_parts:
+                docs.append(Document(
+                    page_content="Skills:\n" + "\n".join(skills_text_parts),
+                    metadata={
+                        "candidate_id": candidate_id,
+                        "section": "skills",
+                        "title": "Skills Summary",
+                    }
+                ))
+
+        # Certifications as one document
+        certs = parsed.get("certifications", [])
+        if certs:
+            cert_names = [str(c) for c in certs if c]
+            if cert_names:
+                docs.append(Document(
+                    page_content="Certifications: " + ", ".join(cert_names),
+                    metadata={
+                        "candidate_id": candidate_id,
+                        "section": "certifications",
+                        "title": "Certifications",
+                    }
+                ))
+
+        if docs:
+            self.client.add_documents(documents=docs)
+
     def ingest_profile(self, profile_data: dict):
+        """Legacy ingestion method — creates one big set of chunks."""
         docs = []
 
         if profile_data.get("resume_text"):

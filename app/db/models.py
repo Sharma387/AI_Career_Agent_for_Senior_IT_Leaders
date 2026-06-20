@@ -77,6 +77,7 @@ class CareerProfile(Base):
     applications = relationship("Application", back_populates="profile", cascade="all, delete-orphan")
     match_results = relationship("MatchResult", back_populates="profile", cascade="all, delete-orphan")
     articulations = relationship("SkillArticulation", back_populates="profile", cascade="all, delete-orphan")
+    parse_runs = relationship("ResumeParseRun", back_populates="profile", cascade="all, delete-orphan")
     user = relationship("User", back_populates="profile")
 
 
@@ -199,6 +200,24 @@ class SkillArticulation(Base):
 
     match_result = relationship("MatchResult", back_populates="articulations")
     profile = relationship("CareerProfile", back_populates="articulations")
+
+
+class ResumeParseRun(Base):
+    __tablename__ = "resume_parse_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    profile_id = Column(Integer, ForeignKey("career_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    model_name = Column(String(100), nullable=True)
+    prompt_version = Column(String(50), nullable=True)
+    processing_time_seconds = Column(Float, nullable=True)
+    parse_status = Column(String(50), nullable=True)  # "success", "partial", "failed"
+    validation_status = Column(String(50), nullable=True)  # "valid", "warnings", "errors"
+    validation_details = Column(JSON, nullable=True)
+    confidence_scores = Column(JSON, nullable=True)
+    chunks_processed = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    profile = relationship("CareerProfile", back_populates="parse_runs")
 
 
 class SecretQuestion(Base):

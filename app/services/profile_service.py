@@ -1,13 +1,19 @@
 import re
+import time
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models import CareerProfile, Project, Skill, Certification
+from app.db.models import CareerProfile, Project, Skill, Certification, ResumeParseRun
 from app.rag.career_rag import CareerRAG
 from app.ingestion.career_expander import CareerExpander
 from app.ingestion.resume_parser import ResumeParser
+from app.ingestion.profile_validator import validate_parsed_resume
 from app.services.document_service import render_resume_html, generate_resume_docx
+
+logger = logging.getLogger(__name__)
 
 
 class ProfileService:
@@ -35,14 +41,24 @@ class ProfileService:
         return self._parser
 
     async def upload_resume(self, file_path: str, db_session: AsyncSession, user_id: int | None = None, original_file_data: bytes | None = None, original_file_name: str | None = None) -> dict:
+        start_time = time.time()
+
+        # Stage 1: Extract text (with OCR fallback handled internally)
         raw_text = self.parser.parse(file_path)
-        
-        # Use AI to parse resume sections (replaces brittle regex parsing)
-        from app.ingestion.ai_resume_parser import parse_resume_with_ai
+
+        # Stage 2: Parse with chunked AI parser
+        from app.ingestion.ai_resume_parser import parse_resume_with_ai, chunk_resume
         parsed = parse_resume_with_ai(raw_text)
-        
-        # Also get the expanded profile with STAR stories from the career expander
-        expanded = self.expander.expand_profile(raw_text)
+        chunks_processed = len(chunk_resume(raw_text))
+
+        # Stage 3: Validate
+        validation = validate_parsed_resume(parsed)
+
+        # Stage 4: Expand from parsed (not raw text)
+        expanded = self.expander.expand_from_parsed(parsed)
+
+        # Calculate processing time
+        processing_time = time.time() - start_time
 
         name = parsed.get("full_name") or "Unknown"
         email = parsed.get("email") or None
@@ -66,9 +82,40 @@ class ProfileService:
         db_session.add(profile)
         await db_session.flush()
 
+        # Stage 5: Store audit record
+        parse_status = "success" if validation["is_valid"] else "partial"
+        if not parsed.get("full_name"):
+            parse_status = "failed"
+
+        validation_status = "valid"
+        if validation["errors"]:
+            validation_status = "errors"
+        elif validation["warnings"]:
+            validation_status = "warnings"
+
+        # Get confidence scores
+        confidence_scores = {}
+        try:
+            from app.ingestion.ai_resume_parser import get_confidence_scores
+            confidence_scores = get_confidence_scores(raw_text)
+        except Exception:
+            pass
+
+        audit_record = ResumeParseRun(
+            profile_id=profile.id,
+            model_name=settings.OLLAMA_MODEL,
+            prompt_version="v2_chunked",
+            processing_time_seconds=round(processing_time, 2),
+            parse_status=parse_status,
+            validation_status=validation_status,
+            validation_details=validation,
+            confidence_scores=confidence_scores,
+            chunks_processed=chunks_processed,
+        )
+        db_session.add(audit_record)
+
         for project in expanded.get("detailed_projects", []):
             star_stories = project.get("star_stories", [])
-            star_text = ""
             star_situation = ""
             star_task = ""
             star_action = ""
@@ -80,9 +127,6 @@ class ProfileService:
                     star_task = first.get("task", "")
                     star_action = first.get("action", "")
                     star_result = first.get("result", "")
-                    star_text = str(first)
-                else:
-                    star_text = str(first)
 
             proj = Project(
                 profile_id=profile.id,
@@ -113,10 +157,10 @@ class ProfileService:
 
         # Store certifications from AI parser
         for cert_name in parsed.get("certifications", []):
-            if cert_name and cert_name.strip():
+            if cert_name and str(cert_name).strip():
                 cert = Certification(
                     profile_id=profile.id,
-                    name=cert_name.strip(),
+                    name=str(cert_name).strip(),
                 )
                 db_session.add(cert)
 
@@ -153,41 +197,11 @@ class ProfileService:
         profile.formatted_resume_html = formatted_html
         await db_session.flush()
 
-        profile_data = {
-            "resume_text": raw_text,
-            "projects": [
-                {
-                    "title": p.get("title", ""),
-                    "description": p.get("description", ""),
-                    "role": p.get("role", ""),
-                    "technologies": p.get("technologies", []),
-                    "impact": p.get("impact", ""),
-                    "star_stories": "\n".join(
-                        str(s) if not isinstance(s, dict) else s.get("situation", "") + " " + s.get("task", "") + " " + s.get("action", "") + " " + s.get("result", "")
-                        for s in p.get("star_stories", [])
-                    ),
-                }
-                for p in expanded.get("detailed_projects", [])
-            ],
-            "skills": [
-                {
-                    "name": s,
-                    "category": cat,
-                }
-                for cat, skills_list in expanded.get("skills_by_category", {}).items()
-                for s in skills_list
-            ],
-            "certifications": [
-                {"name": c.name, "issuer": c.issuer or "", "date_obtained": "", "expiry_date": ""}
-                for c in (await db_session.execute(
-                    select(Certification).where(Certification.profile_id == profile.id)
-                )).scalars().all()
-            ],
-        }
-        self.career_rag.ingest_profile(profile_data)
+        # Stage 6: Granular RAG ingestion
+        self.career_rag.ingest_granular(profile.id, parsed, expanded)
 
         projects_count = len(expanded.get("detailed_projects", []))
-        skills_count = sum(len(v) for v in expanded.get("skills_by_category", {}).values())
+        skills_count = sum(len(v) for v in (skills_data if isinstance(skills_data, dict) else {}).values())
 
         return {
             "profile_id": profile.id,
