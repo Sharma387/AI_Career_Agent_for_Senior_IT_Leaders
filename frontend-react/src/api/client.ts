@@ -114,6 +114,9 @@ export const api = {
     previewResumeHtml(profileId: number) {
       return `/api/profile/${profileId}/resume/html`;
     },
+    originalResumeUrl(profileId: number) {
+      return `/api/profile/${profileId}/resume/original`;
+    },
     downloadResumeDocx(profileId: number) {
       return `/api/profile/${profileId}/resume/docx`;
     },

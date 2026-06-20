@@ -6,64 +6,275 @@
 <title>{{ candidate_name }} - Resume</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Calibri, Arial, sans-serif; color: #2d2d2d; line-height: 1.5; font-size: 11pt; }
-  .page { max-width: 210mm; margin: 0 auto; padding: 20mm 18mm; }
-  .header { border-bottom: 3px solid #1a5276; padding-bottom: 12px; margin-bottom: 18px; }
-  .header h1 { font-size: 22pt; color: #1a5276; font-weight: 700; letter-spacing: 0.5px; }
-  .header .subtitle { font-size: 11pt; color: #555; margin-top: 4px; }
-  .contact { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px; font-size: 9.5pt; color: #444; }
-  .contact span { display: inline-flex; align-items: center; gap: 4px; }
-  .section { margin-bottom: 16px; }
-  .section h2 { font-size: 12pt; color: #1a5276; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 10px; }
-  .summary { font-size: 10.5pt; color: #333; }
-  .experience-item { margin-bottom: 14px; }
-  .experience-item .role-header { display: flex; justify-content: space-between; align-items: baseline; }
-  .experience-item .job-title { font-weight: 600; font-size: 11pt; }
-  .experience-item .company { color: #1a5276; font-size: 10.5pt; }
-  .experience-item .dates { font-size: 9.5pt; color: #777; white-space: nowrap; }
-  .experience-item ul { margin-top: 4px; padding-left: 18px; }
-  .experience-item li { font-size: 10.5pt; margin-bottom: 3px; }
-  .skills-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px 20px; }
-  .skill-category { font-size: 10pt; }
-  .skill-category strong { color: #1a5276; }
-  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
-  @media print { body { font-size: 10pt; } .page { padding: 15mm; } }
+
+  body {
+    font-family: 'Calibri', 'Segoe UI', Arial, sans-serif;
+    color: #2d2d2d;
+    line-height: 1.5;
+    font-size: 11pt;
+    background: #fff;
+  }
+
+  .page {
+    max-width: 210mm;
+    margin: 0 auto;
+    padding: 22mm 20mm;
+    background: #fff;
+  }
+
+  /* --- Header --- */
+  .header {
+    margin-bottom: 20px;
+    padding-bottom: 14px;
+    border-bottom: 2px solid #1a5276;
+  }
+
+  .header h1 {
+    font-size: 26pt;
+    color: #1a5276;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    margin-bottom: 8px;
+  }
+
+  .contact-line {
+    font-size: 10pt;
+    color: #444;
+    margin-bottom: 4px;
+  }
+
+  .contact-line a {
+    color: #444;
+    text-decoration: none;
+  }
+
+  .work-status {
+    font-size: 10pt;
+    color: #555;
+    font-style: italic;
+  }
+
+  /* --- Sections --- */
+  .section {
+    margin-bottom: 18px;
+  }
+
+  .section-title {
+    font-size: 12pt;
+    font-weight: 700;
+    color: #1a5276;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 4px;
+    margin-bottom: 10px;
+  }
+
+  /* --- Summary --- */
+  .summary-text {
+    font-size: 10.5pt;
+    color: #333;
+    line-height: 1.6;
+  }
+
+  /* --- Key Skills --- */
+  .skills-list {
+    list-style: disc;
+    padding-left: 20px;
+    columns: 2;
+    column-gap: 30px;
+  }
+
+  .skills-list li {
+    font-size: 10.5pt;
+    margin-bottom: 3px;
+    break-inside: avoid;
+  }
+
+  /* --- Experience --- */
+  .experience-item {
+    margin-bottom: 16px;
+  }
+
+  .experience-item .role-title {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #2d2d2d;
+  }
+
+  .experience-item .company-name {
+    font-size: 10.5pt;
+    color: #1a5276;
+    font-weight: 600;
+  }
+
+  .experience-item .role-meta {
+    font-size: 9.5pt;
+    color: #777;
+    margin-bottom: 4px;
+  }
+
+  .experience-item .role-description {
+    font-size: 10.5pt;
+    color: #333;
+    margin-bottom: 4px;
+    line-height: 1.5;
+  }
+
+  .experience-item ul {
+    list-style: disc;
+    padding-left: 20px;
+    margin-top: 4px;
+  }
+
+  .experience-item li {
+    font-size: 10.5pt;
+    margin-bottom: 3px;
+    line-height: 1.4;
+  }
+
+  /* --- Projects --- */
+  .project-item {
+    margin-bottom: 14px;
+  }
+
+  .project-item .project-title {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #2d2d2d;
+  }
+
+  .project-item .project-role {
+    font-size: 10pt;
+    color: #1a5276;
+    font-weight: 600;
+  }
+
+  .project-item .project-desc {
+    font-size: 10.5pt;
+    color: #333;
+    margin-top: 2px;
+  }
+
+  .project-item .project-tech {
+    font-size: 9.5pt;
+    color: #555;
+    margin-top: 2px;
+  }
+
+  .project-item .project-impact {
+    font-size: 10.5pt;
+    color: #333;
+    margin-top: 2px;
+  }
+
+  /* --- Education --- */
+  .education-item {
+    margin-bottom: 8px;
+  }
+
+  .education-item .degree {
+    font-size: 11pt;
+    font-weight: 600;
+    color: #2d2d2d;
+  }
+
+  .education-item .institution {
+    font-size: 10pt;
+    color: #555;
+  }
+
+  /* --- Certifications --- */
+  .cert-list {
+    list-style: disc;
+    padding-left: 20px;
+  }
+
+  .cert-list li {
+    font-size: 10.5pt;
+    margin-bottom: 3px;
+  }
+
+  /* --- Print styles --- */
+  @media print {
+    body { font-size: 10pt; background: #fff; }
+    .page { padding: 15mm; max-width: none; }
+    .section { break-inside: avoid; }
+    .experience-item { break-inside: avoid; }
+  }
 </style>
 </head>
 <body>
 <div class="page">
+
+  <!-- Header: Name + Contact -->
   <div class="header">
     <h1>{{ candidate_name }}</h1>
-    {% if headline %}<div class="subtitle">{{ headline }}</div>{% endif %}
-    <div class="contact">
-      {% if email %}<span>&#9993; {{ email }}</span>{% endif %}
-      {% if phone %}<span>&#9742; {{ phone }}</span>{% endif %}
-      {% if location %}<span>&#9906; {{ location }}</span>{% endif %}
-      {% if linkedin %}<span>&#128279; {{ linkedin }}</span>{% endif %}
+    <div class="contact-line">
+      {% set contact_parts = [] %}
+      {% if location %}{% set _ = contact_parts.append(location) %}{% endif %}
+      {% if phone %}{% set _ = contact_parts.append(phone) %}{% endif %}
+      {% if email %}{% set _ = contact_parts.append(email) %}{% endif %}
+      {% if linkedin %}{% set _ = contact_parts.append(linkedin) %}{% endif %}
+      {{ contact_parts | join(' | ') }}
     </div>
+    {% if headline %}
+    <div class="work-status">{{ headline }}</div>
+    {% endif %}
   </div>
 
+  <!-- Summary -->
   {% if summary %}
   <div class="section">
-    <h2>Professional Summary</h2>
-    <div class="summary">{{ summary }}</div>
+    <div class="section-title">Summary</div>
+    <div class="summary-text">{{ summary }}</div>
   </div>
   {% endif %}
 
+  <!-- Key Skills -->
+  {% if skills %}
+  <div class="section">
+    <div class="section-title">Key Skills</div>
+    <ul class="skills-list">
+      {% if skills is mapping %}
+        {% for category, skill_list in skills.items() %}
+          {% if skill_list is iterable and skill_list is not string %}
+            {% for skill in skill_list %}
+            <li>{{ skill }}</li>
+            {% endfor %}
+          {% else %}
+            <li>{{ skill_list }}</li>
+          {% endif %}
+        {% endfor %}
+      {% else %}
+        {% for skill in skills %}
+        <li>{{ skill }}</li>
+        {% endfor %}
+      {% endif %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <!-- Work Experience -->
   {% if experience %}
   <div class="section">
-    <h2>Experience</h2>
+    <div class="section-title">Work Experience</div>
     {% for job in experience %}
     <div class="experience-item">
-      <div class="role-header">
-        <div>
-          <span class="job-title">{{ job.title }}</span>
-          {% if job.company %} <span class="company">— {{ job.company }}</span>{% endif %}
-          {% if job.location %} <span class="company">, {{ job.location }}</span>{% endif %}
-        </div>
-        {% if job.dates %}<span class="dates">{{ job.dates }}</span>{% endif %}
+      <div class="role-title">{{ job.title }}</div>
+      {% if job.company %}
+      <div class="company-name">{{ job.company }}</div>
+      {% endif %}
+      {% if job.dates or job.location %}
+      <div class="role-meta">
+        {% if job.dates %}{{ job.dates }}{% endif %}
+        {% if job.dates and job.location %} | {% endif %}
+        {% if job.location %}{{ job.location }}{% endif %}
       </div>
-      {% if job.description %}<p style="font-size:10pt; margin-top:3px;">{{ job.description }}</p>{% endif %}
+      {% endif %}
+      {% if job.description %}
+      <div class="role-description">{{ job.description }}</div>
+      {% endif %}
       {% if job.bullets %}
       <ul>
         {% for bullet in job.bullets %}
@@ -76,61 +287,59 @@
   </div>
   {% endif %}
 
+  <!-- Key Projects -->
   {% if projects %}
   <div class="section">
-    <h2>Key Projects</h2>
+    <div class="section-title">Key Projects</div>
     {% for project in projects %}
-    <div class="experience-item">
-      <div class="role-header">
-        <span class="job-title">{{ project.title }}</span>
-        {% if project.role %}<span class="company">{{ project.role }}</span>{% endif %}
-      </div>
-      {% if project.description %}<p style="font-size:10pt; margin-top:3px;">{{ project.description }}</p>{% endif %}
-      {% if project.technologies %}<p style="font-size:9.5pt; color:#555; margin-top:2px;"><strong>Tech:</strong> {{ project.technologies }}</p>{% endif %}
-      {% if project.impact %}<p style="font-size:10pt; margin-top:2px;"><strong>Impact:</strong> {{ project.impact }}</p>{% endif %}
+    <div class="project-item">
+      <div class="project-title">{{ project.title }}</div>
+      {% if project.role %}
+      <div class="project-role">{{ project.role }}</div>
+      {% endif %}
+      {% if project.description %}
+      <div class="project-desc">{{ project.description }}</div>
+      {% endif %}
+      {% if project.technologies %}
+      <div class="project-tech"><strong>Technologies:</strong> {{ project.technologies }}</div>
+      {% endif %}
+      {% if project.impact %}
+      <div class="project-impact"><strong>Impact:</strong> {{ project.impact }}</div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
   {% endif %}
 
-  {% if skills %}
-  <div class="section">
-    <h2>Skills</h2>
-    <div class="skills-grid">
-      {% for category, skill_list in skills.items() %}
-      <div class="skill-category">
-        <strong>{{ category }}:</strong> {{ skill_list | join(', ') }}
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-  {% endif %}
-
+  <!-- Education -->
   {% if education %}
   <div class="section">
-    <h2>Education</h2>
+    <div class="section-title">Education</div>
     {% for edu in education %}
-    <div class="experience-item">
-      <div class="role-header">
-        <span class="job-title">{{ edu.degree }}</span>
-        {% if edu.institution %}<span class="company">{{ edu.institution }}</span>{% endif %}
-        {% if edu.year %}<span class="dates">{{ edu.year }}</span>{% endif %}
+    <div class="education-item">
+      <div class="degree">{{ edu.degree }}</div>
+      <div class="institution">
+        {% if edu.institution %}{{ edu.institution }}{% endif %}
+        {% if edu.institution and edu.year %} &bull; {% endif %}
+        {% if edu.year %}{{ edu.year }}{% endif %}
       </div>
     </div>
     {% endfor %}
   </div>
   {% endif %}
 
+  <!-- Certifications -->
   {% if certifications %}
   <div class="section">
-    <h2>Certifications</h2>
-    <ul style="padding-left: 18px;">
+    <div class="section-title">Certifications</div>
+    <ul class="cert-list">
       {% for cert in certifications %}
-      <li style="font-size:10pt;">{{ cert.name }}{% if cert.issuer %} — {{ cert.issuer }}{% endif %}</li>
+      <li>{{ cert.name }}{% if cert.issuer %} — {{ cert.issuer }}{% endif %}</li>
       {% endfor %}
     </ul>
   </div>
   {% endif %}
+
 </div>
 </body>
 </html>

@@ -14,6 +14,7 @@ from sqlalchemy import (
     ForeignKey,
     JSON,
     Enum,
+    LargeBinary,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, relationship
@@ -63,6 +64,8 @@ class CareerProfile(Base):
     linkedin_url = Column(String(512), nullable=True)
     raw_resume_text = Column(Text, nullable=True)
     formatted_resume_html = Column(Text, nullable=True)
+    original_file_data = Column(LargeBinary, nullable=True)
+    original_file_name = Column(String(255), nullable=True)
     interests = Column(JSON, nullable=True)
     education = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

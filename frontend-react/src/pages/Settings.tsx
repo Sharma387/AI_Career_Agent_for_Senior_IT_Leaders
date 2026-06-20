@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api/client'
+import { Lock, Shield, Clock, Play } from 'lucide-react'
 import type { SecretQuestion } from '../types'
 
 export function Settings() {
@@ -18,7 +19,6 @@ export function Settings() {
   const [questionsMessage, setQuestionsMessage] = useState('')
   const [questionsMessageType, setQuestionsMessageType] = useState<'success' | 'error'>('success')
 
-  // Scheduler state
   const [schedulerStatus, setSchedulerStatus] = useState<'idle' | 'loading' | 'running' | 'stopped' | 'error'>('idle')
   const [schedulerInfo, setSchedulerInfo] = useState<{
     isRunning: boolean;
@@ -29,7 +29,7 @@ export function Settings() {
   const [schedulerLoading, setSchedulerLoading] = useState(false)
   const [schedulerMessage, setSchedulerMessage] = useState<string>('')
   const [schedulerMessageType, setSchedulerMessageType] = useState<'success' | 'error'>('success')
-  const [schedulerHistory, setSchedulerHistory] = useState<Array<{
+  const [, setSchedulerHistory] = useState<Array<{
     timestamp: string;
     source: string;
     type: 'incremental' | 'full';
@@ -49,7 +49,6 @@ export function Settings() {
     try {
       const res = await api.jobs.getSchedulerStatus()
       const data = res.data
-
       setSchedulerStatus(data.isRunning ? 'running' : 'stopped')
       setSchedulerInfo({
         isRunning: data.isRunning,
@@ -57,8 +56,6 @@ export function Settings() {
         nextFullRun: data.nextFullRun,
         jobs: data.jobs
       })
-
-      // Scraping history will be populated by a real history API in the future
       setSchedulerHistory([])
     } catch (err: any) {
       setSchedulerMessage('Failed to load scheduler info')
@@ -75,7 +72,6 @@ export function Settings() {
       await api.jobs.triggerSchedulerIncremental()
       setSchedulerMessage('Incremental scrape triggered successfully!')
       setSchedulerMessageType('success')
-      // Refresh scheduler info
       await loadSchedulerInfo()
     } catch (err: any) {
       setSchedulerMessage(err.response?.data?.detail || 'Failed to trigger incremental scrape')
@@ -89,7 +85,6 @@ export function Settings() {
       await api.jobs.triggerSchedulerFull()
       setSchedulerMessage('Full scrape triggered successfully!')
       setSchedulerMessageType('success')
-      // Refresh scheduler info
       await loadSchedulerInfo()
     } catch (err: any) {
       setSchedulerMessage(err.response?.data?.detail || 'Failed to trigger full scrape')
@@ -179,74 +174,40 @@ export function Settings() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto py-8 px-4 space-y-8">
-      <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+    <div className="max-w-3xl mx-auto space-y-6">
+      <h1 className="text-2xl font-bold text-white">Settings</h1>
 
       {/* Change Password */}
       <div className="card">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Change Password</h2>
+        <div className="flex items-center gap-2 mb-4">
+          <Lock className="w-4 h-4 text-blue-400" />
+          <h2 className="text-sm font-semibold text-white">Change Password</h2>
+        </div>
 
         {passwordMessage && (
-          <div
-            className={`mb-4 p-4 rounded-lg text-sm ${
-              passwordMessageType === 'success'
-                ? 'bg-green-50 border border-green-200 text-green-700'
-                : 'bg-red-50 border border-red-200 text-red-700'
-            }`}
-          >
+          <div className={`mb-4 p-3 rounded-lg text-xs ${
+            passwordMessageType === 'success'
+              ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+              : 'bg-red-500/10 border border-red-500/20 text-red-400'
+          }`}>
             {passwordMessage}
           </div>
         )}
 
         <form onSubmit={handleChangePassword} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Current Password
-            </label>
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="input-field"
-              placeholder="Enter current password"
-              required
-            />
+            <label className="block text-xs font-medium text-slate-400 mb-1.5">Current Password</label>
+            <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="input-field" placeholder="Enter current password" required />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              New Password
-            </label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="input-field"
-              placeholder="Min 8 characters"
-              minLength={8}
-              required
-            />
+            <label className="block text-xs font-medium text-slate-400 mb-1.5">New Password</label>
+            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="input-field" placeholder="Min 8 characters" minLength={8} required />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Confirm New Password
-            </label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="input-field"
-              placeholder="Re-enter new password"
-              required
-            />
+            <label className="block text-xs font-medium text-slate-400 mb-1.5">Confirm New Password</label>
+            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="input-field" placeholder="Re-enter new password" required />
           </div>
-
-          <button
-            type="submit"
-            disabled={passwordLoading}
-            className="btn-primary px-6 py-2 text-sm disabled:opacity-50"
-          >
+          <button type="submit" disabled={passwordLoading} className="btn-primary text-xs disabled:opacity-50">
             {passwordLoading ? 'Changing...' : 'Change Password'}
           </button>
         </form>
@@ -254,36 +215,37 @@ export function Settings() {
 
       {/* Security Questions */}
       <div className="card">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Security Questions</h2>
-        <p className="text-sm text-gray-500 mb-4">
+        <div className="flex items-center gap-2 mb-4">
+          <Shield className="w-4 h-4 text-purple-400" />
+          <h2 className="text-sm font-semibold text-white">Security Questions</h2>
+        </div>
+        <p className="text-xs text-slate-500 mb-4">
           These questions are used for password recovery. System-assigned questions cannot be changed.
         </p>
 
         {questionsMessage && (
-          <div
-            className={`mb-4 p-4 rounded-lg text-sm ${
-              questionsMessageType === 'success'
-                ? 'bg-green-50 border border-green-200 text-green-700'
-                : 'bg-red-50 border border-red-200 text-red-700'
-            }`}
-          >
+          <div className={`mb-4 p-3 rounded-lg text-xs ${
+            questionsMessageType === 'success'
+              ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+              : 'bg-red-500/10 border border-red-500/20 text-red-400'
+          }`}>
             {questionsMessage}
           </div>
         )}
 
         {questionsLoading ? (
-          <p className="text-gray-500">Loading questions...</p>
+          <p className="text-slate-500 text-xs">Loading questions...</p>
         ) : questions.length === 0 ? (
-          <p className="text-gray-500">No security questions found.</p>
+          <p className="text-slate-500 text-xs">No security questions found.</p>
         ) : (
           <form onSubmit={handleSaveQuestions} className="space-y-4">
             {questions.map((q) => (
               <div key={q.id}>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <label className="text-sm font-medium text-gray-700">{q.question}</label>
+                  <label className="text-xs font-medium text-slate-300">{q.question}</label>
                   {q.answer_set && !editingAll[q.id] && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      Already set
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      Set
                     </span>
                   )}
                 </div>
@@ -291,7 +253,7 @@ export function Settings() {
                   <button
                     type="button"
                     onClick={() => setEditingAll((prev) => ({ ...prev, [q.id]: true }))}
-                    className="btn-secondary px-4 py-1.5 text-xs"
+                    className="btn-ghost text-xs"
                   >
                     Update
                   </button>
@@ -307,120 +269,81 @@ export function Settings() {
                 )}
               </div>
             ))}
-
-            <button
-              type="submit"
-              disabled={savingQuestions}
-              className="btn-primary px-6 py-2 text-sm disabled:opacity-50"
-            >
+            <button type="submit" disabled={savingQuestions} className="btn-primary text-xs disabled:opacity-50">
               {savingQuestions ? 'Saving...' : 'Save Answers'}
             </button>
           </form>
         )}
       </div>
 
-      {/* Scheduler Settings */}
+      {/* Scheduler */}
       <div className="card">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Job Scraping Scheduler</h2>
-        <p className="text-sm text-gray-500 mb-4">
-          Configure and monitor automated job scraping from LinkedIn and other sources.
+        <div className="flex items-center gap-2 mb-4">
+          <Clock className="w-4 h-4 text-amber-400" />
+          <h2 className="text-sm font-semibold text-white">Job Scraping Scheduler</h2>
+        </div>
+        <p className="text-xs text-slate-500 mb-4">
+          Configure and monitor automated job scraping.
         </p>
 
         {schedulerMessage && (
-          <div
-            className={`mb-4 p-4 rounded-lg text-sm ${
-              schedulerMessageType === 'success'
-                ? 'bg-green-50 border border-green-200 text-green-700'
-                : 'bg-red-50 border border-red-200 text-red-700'
-            }`}
-          >
+          <div className={`mb-4 p-3 rounded-lg text-xs ${
+            schedulerMessageType === 'success'
+              ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+              : 'bg-red-500/10 border border-red-500/20 text-red-400'
+          }`}>
             {schedulerMessage}
           </div>
         )}
 
         {schedulerLoading ? (
           <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto" />
           </div>
         ) : schedulerInfo ? (
-          <>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between mb-4">
-                <span className="font-medium">Scheduler Status:</span>
-                <span className={schedulerStatus === 'running' ? 'text-green-600' : 'text-red-600'}>
-                  {schedulerStatus === 'running' ? 'Running' : 'Stopped'}
-                </span>
-              </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-300">Status:</span>
+              <span className={`text-xs font-medium ${schedulerStatus === 'running' ? 'text-emerald-400' : 'text-red-400'}`}>
+                {schedulerStatus === 'running' ? '● Running' : '○ Stopped'}
+              </span>
+            </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-white rounded-lg p-4 border">
-                  <h3 className="font-medium mb-2">Next Incremental Scrape</h3>
-                  <p className="text-sm text-gray-600">{schedulerInfo.nextIncrementalRun}</p>
-                </div>
-                <div className="bg-white rounded-lg p-4 border">
-                  <h3 className="font-medium mb-2">Next Full Scrape</h3>
-                  <p className="text-sm text-gray-600">{schedulerInfo.nextFullRun}</p>
-                </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-[#0E1628] rounded-lg p-3 border border-[#1E2D4A]">
+                <h3 className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Next Incremental</h3>
+                <p className="text-xs text-slate-300 font-mono">{schedulerInfo.nextIncrementalRun || '—'}</p>
               </div>
+              <div className="bg-[#0E1628] rounded-lg p-3 border border-[#1E2D4A]">
+                <h3 className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Next Full</h3>
+                <p className="text-xs text-slate-300 font-mono">{schedulerInfo.nextFullRun || '—'}</p>
+              </div>
+            </div>
 
-              <div className="mt-6">
-                <h3 className="font-medium mb-3">Scheduled Jobs</h3>
+            {schedulerInfo.jobs.length > 0 && (
+              <div>
+                <h3 className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Scheduled Jobs</h3>
                 {schedulerInfo.jobs.map((job, index) => (
-                  <div key={index} className="border-t pt-4 first:border-t-0">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{job.name}</span>
-                      <span className="text-sm text-gray-500">{job.nextRun}</span>
-                    </div>
+                  <div key={index} className="flex items-center justify-between py-2 border-t border-[#1E2D4A] first:border-t-0">
+                    <span className="text-xs text-slate-300">{job.name}</span>
+                    <span className="text-[10px] text-slate-500 font-mono">{job.nextRun || '—'}</span>
                   </div>
                 ))}
               </div>
+            )}
 
-              <div className="mt-6">
-                <h3 className="font-medium mb-3">Manual Triggers</h3>
-                <div className="space-y-3">
-                  <button
-                    onClick={handleTriggerIncrementalScrape}
-                    className="btn-secondary w-full"
-                  >
-                    Trigger Incremental Scrape (Last 2 Hours)
-                  </button>
-                  <button
-                    onClick={handleTriggerFullScrape}
-                    className="btn-primary w-full"
-                  >
-                    Trigger Full Scrape
-                  </button>
-                </div>
-              </div>
-
-              {schedulerHistory.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="font-medium mb-3">Recent Scraping History</h3>
-                  <div className="space-y-2">
-                    {schedulerHistory.map((record, index) => (
-                      <div key={index} className="bg-white rounded-lg p-4 border">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <span className="font-medium">{record.source} ({record.type})</span>
-                            <span className="text-xs text-gray-500 block">{record.timestamp}</span>
-                          </div>
-                          <div className="text-right space-x-2">
-                            <span className="text-sm font-medium text-green-600">+{record.newJobs}</span>
-                            <span className="text-sm text-gray-500">{record.duplicates} duplicates</span>
-                            {record.errors > 0 && (
-                              <span className="text-sm text-red-500">{record.errors} errors</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+            <div className="space-y-2 pt-2">
+              <h3 className="text-[10px] text-slate-500 uppercase tracking-wider">Manual Triggers</h3>
+              <button onClick={handleTriggerIncrementalScrape} className="btn-ghost w-full text-xs">
+                <Play className="w-3 h-3 mr-1" /> Incremental Scrape (Last 2 Hours)
+              </button>
+              <button onClick={handleTriggerFullScrape} className="btn-primary w-full text-xs">
+                <Play className="w-3 h-3 mr-1" /> Full Scrape
+              </button>
             </div>
-          </>
+          </div>
         ) : (
-          <p className="text-gray-500 text-center py-8">Loading scheduler information...</p>
+          <p className="text-slate-500 text-center py-8 text-xs">Loading scheduler info...</p>
         )}
       </div>
     </div>

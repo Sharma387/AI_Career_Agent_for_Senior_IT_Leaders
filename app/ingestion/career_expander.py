@@ -82,14 +82,33 @@ class CareerExpander:
             HumanMessage(content=user_content),
         ]
 
-        response = self.llm.invoke(messages)
-        raw = response.content.strip()
+        try:
+            response = self.llm.invoke(messages)
+            raw = response.content.strip()
 
-        if raw.startswith("```"):
-            raw = re.sub(r"^```\w*\n?", "", raw)
-            raw = re.sub(r"\n?```$", "", raw)
+            if raw.startswith("```"):
+                raw = re.sub(r"^```\w*\n?", "", raw)
+                raw = re.sub(r"\n?```$", "", raw)
 
-        profile = json.loads(raw)
+            profile = json.loads(raw)
+        except json.JSONDecodeError:
+            # LLM returned non-JSON — fall back to basic profile
+            profile = {
+                "summary": resume_text[:500] if resume_text else "",
+                "detailed_projects": [],
+                "skills_by_category": {},
+                "key_achievements": [],
+                "interview_stories": [],
+            }
+        except Exception:
+            # LLM call failed entirely (timeout, connection error, etc.)
+            profile = {
+                "summary": resume_text[:500] if resume_text else "",
+                "detailed_projects": [],
+                "skills_by_category": {},
+                "key_achievements": [],
+                "interview_stories": [],
+            }
 
         profile.setdefault("summary", "")
         profile.setdefault("detailed_projects", [])

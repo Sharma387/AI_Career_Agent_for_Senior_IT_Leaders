@@ -62,17 +62,10 @@ Provide your response as a JSON object with exactly these fields:
         response = self.llm.invoke([HumanMessage(content=prompt)])
         content = response.content.strip()
 
-        if content.startswith("```"):
-            content = content.split("\n", 1)[1]
-            if content.endswith("```"):
-                content = content[: -3]
-            content = content.strip()
+        from app.agents.json_parser import extract_json_from_llm
 
-        import json
-
-        try:
-            result = json.loads(content)
-        except json.JSONDecodeError:
+        result = extract_json_from_llm(content)
+        if result is None:
             result = {
                 "rejection_patterns": [],
                 "success_patterns": [],
@@ -143,21 +136,14 @@ Provide your response as a JSON object with exactly these fields:
         response = self.llm.invoke([HumanMessage(content=prompt)])
         content = response.content.strip()
 
-        if content.startswith("```"):
-            content = content.split("\n", 1)[1]
-            if content.endswith("```"):
-                content = content[: -3]
-            content = content.strip()
+        from app.agents.json_parser import extract_json_from_llm
 
-        import json
-
-        try:
-            result = json.loads(content)
-        except json.JSONDecodeError:
+        result = extract_json_from_llm(content)
+        if result is None:
             result = {
                 "likely_questions": [],
                 "star_answers": [],
-                "key_themes": [content] if content else [],
+                "key_themes": [content[:200]] if content else [],
             }
 
         result["likely_questions"] = result.get("likely_questions", [])

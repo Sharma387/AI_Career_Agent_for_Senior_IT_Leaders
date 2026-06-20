@@ -2,12 +2,11 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { MaterialsModal } from '../components/MaterialsModal';
 import type { Application, ApplicationStats } from '../types';
 
-interface Materials {
+interface ViewingMaterials {
   application_id: number;
-  resume_version_text: string;
-  cover_letter_text: string;
   job_title: string;
   company: string;
 }
@@ -17,13 +16,8 @@ export function Applications() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [stats, setStats] = useState<ApplicationStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [viewingMaterials, setViewingMaterials] = useState<Materials | null>(null);
+  const [viewingMaterials, setViewingMaterials] = useState<ViewingMaterials | null>(null);
   const [loadingMaterials, setLoadingMaterials] = useState<number | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [editResume, setEditResume] = useState('');
-  const [editCoverLetter, setEditCoverLetter] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'resume' | 'cover_letter'>('resume');
 
   useEffect(() => {
     if (!profileId) {
@@ -52,15 +46,16 @@ export function Applications() {
     }
   };
 
-  const handleViewMaterials = async (applicationId: number) => {
-    setLoadingMaterials(applicationId);
+  const handleViewMaterials = async (app: Application) => {
+    setLoadingMaterials(app.application_id);
     try {
-      const res = await api.applications.getMaterials(applicationId);
-      setViewingMaterials(res.data);
-      setEditResume(res.data.resume_version_text);
-      setEditCoverLetter(res.data.cover_letter_text);
-      setEditing(false);
-      setActiveTab('resume');
+      // Verify materials exist before opening modal
+      await api.applications.getMaterials(app.application_id);
+      setViewingMaterials({
+        application_id: app.application_id,
+        job_title: app.job?.title || 'Unknown Job',
+        company: app.job?.company || '',
+      });
     } catch {
       alert('No materials found for this application');
     } finally {
@@ -68,30 +63,11 @@ export function Applications() {
     }
   };
 
-  const handleSaveMaterials = async () => {
-    if (!viewingMaterials) return;
-    setSaving(true);
-    try {
-      await api.applications.updateMaterials(viewingMaterials.application_id, editResume, editCoverLetter);
-      setViewingMaterials({
-        ...viewingMaterials,
-        resume_version_text: editResume,
-        cover_letter_text: editCoverLetter,
-      });
-      setEditing(false);
-      alert('Materials saved');
-    } catch {
-      alert('Failed to save materials');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   if (!profileId) {
     return (
       <div className="card text-center py-12">
-        <p className="text-gray-500 mb-4">Upload your resume first to get started.</p>
-        <Link to="/profile" className="btn-primary">Upload Resume</Link>
+        <p className="text-slate-400 mb-4">Upload your resume first to get started.</p>
+        <Link to="/resume" className="btn-primary">Upload Resume</Link>
       </div>
     );
   }
@@ -99,67 +75,67 @@ export function Applications() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      <h1 className="text-2xl font-bold">Applications</h1>
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold text-white">Applications</h1>
 
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <StatMini label="Applied" value={stats.total_applied} />
-          <StatMini label="Interviews" value={stats.interview_count} />
-          <StatMini label="Rejected" value={stats.rejection_count} />
-          <StatMini label="Offers" value={stats.offer_count} />
-          <StatMini label="Interview Rate" value={`${stats.interview_rate}%`} />
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <StatMini label="Applied" value={stats.total_applied} color="blue" />
+          <StatMini label="Interviews" value={stats.interview_count} color="green" />
+          <StatMini label="Rejected" value={stats.rejection_count} color="red" />
+          <StatMini label="Offers" value={stats.offer_count} color="purple" />
+          <StatMini label="Interview Rate" value={`${stats.interview_rate}%`} color="amber" />
         </div>
       )}
 
       {applications.length === 0 ? (
         <div className="card text-center py-12">
-          <p className="text-gray-500 mb-4">No applications tracked yet.</p>
+          <p className="text-slate-400 mb-4">No applications tracked yet.</p>
           <Link to="/jobs" className="btn-primary">Browse Jobs</Link>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {applications.map((app) => (
             <div key={app.application_id} className="card">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <h3 className="font-semibold">{app.job?.title || 'Unknown Job'}</h3>
-                  <p className="text-gray-600">{app.job?.company || ''} {app.job?.location ? `• ${app.job.location}` : ''}</p>
-                  <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+                  <h3 className="font-semibold text-white text-sm">{app.job?.title || 'Unknown Job'}</h3>
+                  <p className="text-slate-400 text-xs">{app.job?.company || ''} {app.job?.location ? `• ${app.job.location}` : ''}</p>
+                  <div className="flex items-center gap-4 mt-2 text-[11px] text-slate-500 font-mono">
                     <span>Applied: {new Date(app.date_applied).toLocaleDateString()}</span>
                     <span>Updated: {new Date(app.last_updated).toLocaleDateString()}</span>
                   </div>
                   {app.feedback_notes && (
-                    <p className="mt-2 text-sm text-gray-600 italic">"{app.feedback_notes}"</p>
+                    <p className="mt-2 text-xs text-slate-500 italic">"{app.feedback_notes}"</p>
                   )}
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => handleViewMaterials(app.application_id)}
+                      onClick={() => handleViewMaterials(app)}
                       disabled={loadingMaterials === app.application_id}
-                      className="text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                      className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50 transition-colors"
                     >
                       {loadingMaterials === app.application_id ? 'Loading...' : 'View / Edit'}
                     </button>
-                    <span className="text-gray-300">|</span>
+                    <span className="text-[#1E2D4A]">|</span>
                     <a
                       href={api.applications.downloadResumeHtml(app.application_id)}
                       download
-                      className="text-sm text-gray-500 hover:text-gray-700"
+                      className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
                     >
                       Resume
                     </a>
                     <a
                       href={api.applications.downloadCoverLetterHtml(app.application_id)}
                       download
-                      className="text-sm text-gray-500 hover:text-gray-700"
+                      className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
                     >
                       Cover Letter
                     </a>
@@ -167,7 +143,7 @@ export function Applications() {
                   <select
                     value={app.status}
                     onChange={(e) => handleStatusUpdate(app.application_id, e.target.value)}
-                    className="text-sm border rounded px-2 py-1"
+                    className="input-field text-xs py-1 px-2 w-auto"
                   >
                     <option value="applied">Applied</option>
                     <option value="interview">Interview</option>
@@ -182,146 +158,30 @@ export function Applications() {
         </div>
       )}
 
-      {viewingMaterials && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">
-                Materials: {viewingMaterials.job_title} @ {viewingMaterials.company}
-              </h2>
-              <div className="flex items-center gap-2">
-                {!editing && (
-                  <button onClick={() => setEditing(true)} className="btn-secondary text-sm">
-                    Edit Text
-                  </button>
-                )}
-                <button onClick={() => setViewingMaterials(null)} className="text-gray-500 hover:text-gray-700 text-xl">
-                  ×
-                </button>
-              </div>
-            </div>
-
-            <div className="flex gap-2 mb-4 border-b">
-              <button
-                onClick={() => setActiveTab('resume')}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'resume'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Resume
-              </button>
-              <button
-                onClick={() => setActiveTab('cover_letter')}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'cover_letter'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Cover Letter
-              </button>
-            </div>
-
-            {activeTab === 'resume' ? (
-              <div>
-                {editing ? (
-                  <textarea
-                    value={editResume}
-                    onChange={(e) => setEditResume(e.target.value)}
-                    className="input-field w-full"
-                    rows={15}
-                  />
-                ) : (
-                  <div className="bg-white rounded-lg border max-h-96 overflow-y-auto">
-                    <iframe
-                      src={api.applications.previewResumeHtml(viewingMaterials.application_id)}
-                      className="w-full min-h-[384px] border-0"
-                      title="Resume Preview"
-                    />
-                  </div>
-                )}
-                {!editing && (
-                  <div className="flex gap-2 mt-4">
-                    <a
-                      href={api.applications.downloadResumeHtml(viewingMaterials.application_id)}
-                      download
-                      className="btn-secondary text-sm"
-                    >
-                      Download HTML
-                    </a>
-                    <a
-                      href={api.applications.downloadResumeDocx(viewingMaterials.application_id)}
-                      download
-                      className="btn-primary text-sm"
-                    >
-                      Download Word (.docx)
-                    </a>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div>
-                {editing ? (
-                  <textarea
-                    value={editCoverLetter}
-                    onChange={(e) => setEditCoverLetter(e.target.value)}
-                    className="input-field w-full"
-                    rows={10}
-                  />
-                ) : (
-                  <div className="bg-white rounded-lg border max-h-96 overflow-y-auto">
-                    <iframe
-                      src={api.applications.previewCoverLetterHtml(viewingMaterials.application_id)}
-                      className="w-full min-h-[384px] border-0"
-                      title="Cover Letter Preview"
-                    />
-                  </div>
-                )}
-                {!editing && (
-                  <div className="flex gap-2 mt-4">
-                    <a
-                      href={api.applications.downloadCoverLetterHtml(viewingMaterials.application_id)}
-                      download
-                      className="btn-secondary text-sm"
-                    >
-                      Download HTML
-                    </a>
-                    <a
-                      href={api.applications.downloadCoverLetterDocx(viewingMaterials.application_id)}
-                      download
-                      className="btn-primary text-sm"
-                    >
-                      Download Word (.docx)
-                    </a>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {editing && (
-              <div className="flex justify-end gap-2 mt-4">
-                <button onClick={() => { setEditing(false); setEditResume(viewingMaterials.resume_version_text); setEditCoverLetter(viewingMaterials.cover_letter_text); }} className="btn-secondary">
-                  Cancel
-                </button>
-                <button onClick={handleSaveMaterials} disabled={saving} className="btn-primary disabled:opacity-50">
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Materials Modal */}
+      <MaterialsModal
+        isOpen={!!viewingMaterials}
+        onClose={() => setViewingMaterials(null)}
+        applicationId={viewingMaterials?.application_id || null}
+        jobTitle={viewingMaterials?.job_title || ''}
+        company={viewingMaterials?.company || ''}
+      />
     </div>
   );
 }
 
-function StatMini({ label, value }: { label: string; value: string | number }) {
+function StatMini({ label, value, color }: { label: string; value: string | number; color: string }) {
+  const colorMap: Record<string, string> = {
+    blue: 'text-blue-400',
+    green: 'text-emerald-400',
+    red: 'text-red-400',
+    purple: 'text-purple-400',
+    amber: 'text-amber-400',
+  };
   return (
-    <div className="bg-white border rounded-lg p-3 text-center">
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className="text-xl font-bold">{value}</p>
+    <div className="rounded-lg border border-[#1E2D4A] bg-[#0E1628] p-3 text-center">
+      <p className="text-[10px] text-slate-500 uppercase tracking-wider">{label}</p>
+      <p className={`text-xl font-bold mt-1 ${colorMap[color] || 'text-slate-200'}`}>{value}</p>
     </div>
   );
 }

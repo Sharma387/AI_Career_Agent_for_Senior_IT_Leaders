@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
+import { CheckCircle, XCircle, Lightbulb, Info } from 'lucide-react';
 
 const PROFILE_ID_KEY = 'career_agent_profile_id';
 
@@ -30,17 +31,17 @@ export function Insights() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="space-y-8">
-        <h1 className="text-2xl font-bold">Career Insights</h1>
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-white">Career Insights</h1>
         <div className="card text-center py-12">
-          <p className="text-red-500">{error}</p>
+          <p className="text-red-400">{error}</p>
         </div>
       </div>
     );
@@ -48,10 +49,10 @@ export function Insights() {
 
   if (!insights) {
     return (
-      <div className="space-y-8">
-        <h1 className="text-2xl font-bold">Career Insights</h1>
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-white">Career Insights</h1>
         <div className="card text-center py-12">
-          <p className="text-gray-500">No insights available. Upload a resume and apply to jobs to generate insights.</p>
+          <p className="text-slate-500">No insights available. Upload a resume and apply to jobs to generate insights.</p>
         </div>
       </div>
     );
@@ -60,78 +61,78 @@ export function Insights() {
   const convRate = insights.interview_conversion_rate ?? 0;
 
   return (
-    <div className="space-y-8">
-      <h1 className="text-2xl font-bold">Career Insights</h1>
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold text-white">Career Insights</h1>
 
+      {/* Conversion Rate */}
       <div className="card">
-        <h2 className="text-lg font-semibold mb-2">Interview Conversion Rate</h2>
+        <h2 className="text-sm font-semibold text-white mb-3">Interview Conversion Rate</h2>
         <div className="flex items-center gap-4">
-          <div className="text-4xl font-bold text-blue-600">{(convRate * 100).toFixed(0)}%</div>
-          <p className="text-sm text-gray-500">
+          <div className="text-4xl font-bold text-blue-400">{(convRate * 100).toFixed(0)}%</div>
+          <p className="text-xs text-slate-500">
             {convRate === 0 ? 'Insufficient data to calculate' : 'Of applications lead to interviews'}
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Insight Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <InsightCard
           title="Success Patterns"
           items={insights.success_patterns}
+          icon={CheckCircle}
           color="green"
-          icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
         />
         <InsightCard
           title="Rejection Patterns"
           items={insights.rejection_patterns}
+          icon={XCircle}
           color="red"
-          icon="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
         />
         <InsightCard
           title="Improvement Suggestions"
           items={insights.improvement_suggestions}
+          icon={Lightbulb}
           color="blue"
-          icon="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
         />
         <InsightCard
           title="Key Insights"
           items={insights.insights}
+          icon={Info}
           color="amber"
-          icon="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
         />
       </div>
     </div>
   );
 }
 
-function InsightCard({ title, items, color, icon }: {
+function InsightCard({ title, items, icon: Icon, color }: {
   title: string;
   items: string[];
+  icon: any;
   color: string;
-  icon: string;
 }) {
-  const colorMap: Record<string, { bg: string; border: string; icon: string }> = {
-    blue: { bg: 'bg-blue-50', border: 'border-blue-200', icon: 'text-blue-600' },
-    green: { bg: 'bg-green-50', border: 'border-green-200', icon: 'text-green-600' },
-    amber: { bg: 'bg-amber-50', border: 'border-amber-200', icon: 'text-amber-600' },
-    red: { bg: 'bg-red-50', border: 'border-red-200', icon: 'text-red-600' },
+  const colorMap: Record<string, { border: string; iconColor: string; bg: string }> = {
+    blue: { border: 'border-blue-500/20', iconColor: 'text-blue-400', bg: 'bg-blue-500/5' },
+    green: { border: 'border-emerald-500/20', iconColor: 'text-emerald-400', bg: 'bg-emerald-500/5' },
+    amber: { border: 'border-amber-500/20', iconColor: 'text-amber-400', bg: 'bg-amber-500/5' },
+    red: { border: 'border-red-500/20', iconColor: 'text-red-400', bg: 'bg-red-500/5' },
   };
   const c = colorMap[color] || colorMap.blue;
 
   return (
-    <div className={`rounded-xl border ${c.border} ${c.bg} p-6`}>
-      <div className="flex items-center gap-3 mb-4">
-        <svg className={`w-6 h-6 ${c.icon}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={icon} />
-        </svg>
-        <h2 className="text-lg font-semibold">{title}</h2>
+    <div className={`rounded-xl border ${c.border} ${c.bg} p-5`}>
+      <div className="flex items-center gap-2 mb-4">
+        <Icon className={`w-5 h-5 ${c.iconColor}`} />
+        <h2 className="text-sm font-semibold text-white">{title}</h2>
       </div>
       {items.length === 0 ? (
-        <p className="text-gray-500 text-sm">No data available</p>
+        <p className="text-slate-500 text-xs">No data available</p>
       ) : (
         <ul className="space-y-2">
           {items.map((item, i) => (
-            <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
-              <span className="text-gray-400 mt-0.5">•</span>
+            <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
+              <span className="text-slate-600 mt-0.5">•</span>
               {item}
             </li>
           ))}

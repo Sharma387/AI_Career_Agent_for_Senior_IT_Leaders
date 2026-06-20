@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { MessageSquare, Copy } from 'lucide-react';
 
 export function InterviewPrep() {
   const { profileId } = useAuth();
@@ -27,21 +28,24 @@ export function InterviewPrep() {
   if (!profileId) {
     return (
       <div className="card text-center py-12">
-        <p className="text-gray-500 mb-4">Upload your resume first to get started.</p>
-        <Link to="/profile" className="btn-primary">Upload Resume</Link>
+        <p className="text-slate-400 mb-4">Upload your resume first to get started.</p>
+        <Link to="/resume" className="btn-primary">Upload Resume</Link>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 max-w-3xl">
-      <h1 className="text-2xl font-bold">Interview Preparation</h1>
+    <div className="space-y-6 max-w-3xl">
+      <h1 className="text-2xl font-bold text-white">Interview Preparation</h1>
 
       <div className="card">
-        <h2 className="text-lg font-semibold mb-4">Generate Materials</h2>
+        <div className="flex items-center gap-2 mb-4">
+          <MessageSquare className="w-4 h-4 text-purple-400" />
+          <h2 className="text-sm font-semibold text-white">Generate Materials</h2>
+        </div>
         <form onSubmit={handleGenerate} className="flex items-end gap-4">
           <div className="flex-1">
-            <label className="block text-sm font-medium mb-1">Job ID</label>
+            <label className="block text-xs font-medium text-slate-400 mb-1.5">Job ID</label>
             <input
               type="number"
               value={jobId}
@@ -52,37 +56,45 @@ export function InterviewPrep() {
             />
           </div>
           <button type="submit" disabled={loading} className="btn-primary disabled:opacity-50 whitespace-nowrap">
-            {loading ? 'Generating...' : 'Generate Materials'}
+            {loading ? 'Generating...' : 'Generate'}
           </button>
         </form>
       </div>
 
       {materials && (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <div className="card">
-            <h2 className="text-lg font-semibold mb-4">Cover Letter</h2>
-            <div className="bg-gray-50 rounded-lg p-4 whitespace-pre-wrap text-sm text-gray-700">
-              {materials.cover_letter}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-white">Cover Letter</h2>
+              <button
+                onClick={() => navigator.clipboard.writeText(materials.cover_letter)}
+                className="btn-ghost text-xs"
+              >
+                <Copy className="w-3 h-3 mr-1" /> Copy
+              </button>
             </div>
-            <button
-              onClick={() => navigator.clipboard.writeText(materials.cover_letter)}
-              className="btn-secondary text-sm mt-3"
-            >
-              Copy to Clipboard
-            </button>
+            <div className="bg-[#0E1628] rounded-lg p-4 border border-[#1E2D4A] max-h-80 overflow-y-auto">
+              <p className="text-xs text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">
+                {materials.cover_letter}
+              </p>
+            </div>
           </div>
 
           <div className="card">
-            <h2 className="text-lg font-semibold mb-4">Tailored Resume</h2>
-            <div className="bg-gray-50 rounded-lg p-4 whitespace-pre-wrap text-sm text-gray-700">
-              {materials.resume}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-white">Tailored Resume</h2>
+              <button
+                onClick={() => navigator.clipboard.writeText(materials.resume)}
+                className="btn-ghost text-xs"
+              >
+                <Copy className="w-3 h-3 mr-1" /> Copy
+              </button>
             </div>
-            <button
-              onClick={() => navigator.clipboard.writeText(materials.resume)}
-              className="btn-secondary text-sm mt-3"
-            >
-              Copy to Clipboard
-            </button>
+            <div className="bg-[#0E1628] rounded-lg p-4 border border-[#1E2D4A] max-h-80 overflow-y-auto">
+              <p className="text-xs text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">
+                {materials.resume}
+              </p>
+            </div>
           </div>
         </div>
       )}

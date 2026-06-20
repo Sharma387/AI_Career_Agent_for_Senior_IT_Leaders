@@ -382,7 +382,21 @@ class JobService:
         )
         certs = certs_result.scalars().all()
 
-        career_chunks = self.career_rag.get_all_chunks()
+        # Query for the most relevant career chunks based on job requirements (not all chunks)
+        query_text = f"{job.title} {job.company} {job.seniority_level} {job.requirements_text or ''}"
+        career_chunks_result = self.career_rag.query(query_text, k=20)
+        career_chunks = [{"content": doc.page_content, "metadata": meta} for doc, meta in career_chunks_result]
+        
+        # If we don't have enough relevant chunks, add the most important resume/project chunks
+        if len(career_chunks) < 10:
+            all_chunks = self.career_rag.get_all_chunks()
+            # Prioritize project and skill chunks
+            for chunk in all_chunks:
+                if chunk.get("metadata", {}).get("type") in ("project", "skill"):
+                    if chunk not in career_chunks:
+                        career_chunks.append(chunk)
+                if len(career_chunks) >= 15:
+                    break
 
         job_rag_data = {
             "job_id": job.id,

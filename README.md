@@ -1,360 +1,253 @@
-# AI_Career_Agent_for_Senior_IT_Leaders
+# AI Career Agent for Senior IT Leaders
 
-An AI-powered career intelligence system that uses RAG (Retrieval-Augmented Generation) to match senior IT leaders with job opportunities, generate tailored application materials, and provide career insights.
+An AI-powered career intelligence platform that helps senior IT professionals (Project Managers, IT Directors, CTOs) discover relevant job opportunities, match against their profile, and generate tailored application materials using RAG and local LLMs.
+
+## Features
+
+- **Multi-Source Job Search** — Adzuna API (NZ/AU jobs), Seek automation (Playwright), LinkedIn browser extension
+- **AI Job Matching** — RAG-based scoring with skills, experience, industry, and leadership dimensions
+- **Resume & Cover Letter Generation** — LLM-generated materials tailored per job
+- **Interview Strategy** — AI-prepared talking points, potential questions, and gap analysis
+- **Application Tracking** — Status management, insights, and analytics
+- **Smart Deduplication** — URL + title/company matching prevents duplicate entries
+- **API Usage Management** — Daily dedup, monthly quota tracking, automatic fallback to free APIs
+- **Scheduled Scraping** — Daily automated Seek searches with configurable role presets
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    React Frontend (TypeScript)                      │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐   │
-│  │Dashboard │  │ Job Board│  │ Tracker  │  │ Insights         │   │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────────┬─────────┘   │
-└───────┼──────────────┼──────────────┼─────────────────┼─────────────┘
-        │              │              │                 │
-        ▼              ▼              ▼                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                     FastAPI Backend                                 │
-│  ┌──────────────────────────────────────────────────────────────┐   │
-│  │                    API Router Layer                           │   │
-│  └──────────┬───────────────────────────────────────┬──────────┘   │
-│             │                                       │              │
-│  ┌──────────▼───────────────────────────────────────▼──────────┐   │
-│  │                   Service Layer                              │   │
-│  │  ProfileService  JobService  TrackingService                │   │
-│  └──────────┬───────────────────────────────────────┬──────────┘   │
-│             │                                       │              │
-│  ┌──────────▼───────────────────────────────────────▼──────────┐   │
-│  │                   Agent Layer                                │   │
-│  │  LLM Matching Agent  Insight Agent  Career Strategy Agent    │   │
-│  └──────────┬───────────────────────────────────────┬──────────┘   │
-│             │                                       │              │
-│  ┌──────────▼───────────────────────────────────────▼──────────┐   │
-│  │                   RAG Layer                                  │   │
-│  │  CareerRAG  JobRAG  ApplicationRAG                          │   │
-│  └──────────┬───────────────────────────────────────┬──────────┘   │
-│             │                                       │              │
-│  ┌──────────▼───────────────────────────────────────▼──────────┐   │
-│  │                   Data Layer                                 │   │
-│  │  SQLite (profiles, jobs, applications)                      │   │
-│  │  ChromaDB (career, job, application embeddings)             │   │
-│  └────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│             React Frontend (TypeScript + shadcn/ui + Tailwind)          │
+│  Dashboard │ Jobs │ Applications │ Profile │ Insights │ Interview Prep │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │ REST API
+┌──────────────────────────────────▼─────────────────────────────────────┐
+│                         FastAPI Backend                                 │
+│  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐  ┌───────────┐  │
+│  │ API Routes  │  │ Job Ingestion│  │  LLM Agents  │  │ Scheduler │  │
+│  └──────┬──────┘  └──────┬───────┘  └──────┬───────┘  └─────┬─────┘  │
+│         │                │                  │                │        │
+│  ┌──────▼──────────────▼──────────────────▼────────────────▼──────┐  │
+│  │              Service Layer (Profile, Job, Tracking)              │  │
+│  └──────┬─────────────────────────────────────────────────┬───────┘  │
+│         │                                                 │          │
+│  ┌──────▼───────────┐  ┌─────────────────────────────────▼───────┐  │
+│  │ SQLite (aiosqlite)│  │ ChromaDB (RAG Embeddings)               │  │
+│  └───────────────────┘  └────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────────┘
+
+Job Sources:
+  • Adzuna API (primary, 250 calls/month free) → aggregates Seek, Trade Me, etc.
+  • Seek.co.nz Playwright automation (when Cloudflare allows)
+  • LinkedIn Browser Extension (manual capture, zero ban risk)
+  • Jobicy + Arbeitnow (free fallback when Adzuna quota exhausted)
 ```
 
 ## Tech Stack
 
-| Layer          | Technology                                    |
-|----------------|-----------------------------------------------|
-| Frontend       | React (TypeScript) with Tailwind CSS          |
-| Backend        | Python 3.11+, FastAPI, Pydantic               |
-| RAG Framework  | LangChain + ChromaDB                          |
-| LLM            | Nvidia NIM (meta/llama-3.1-8b-instruct)       |
-| Embeddings     | sentence-transformers (all-MiniLM-L6-v2)      |
-| Vector Store   | ChromaDB (persistent, local)                  |
-| Database       | SQLite via SQLAlchemy (async)                 |
-| Document Parsing | PyPDF, docx2txt                            |
+| Layer           | Technology                                                    |
+|-----------------|---------------------------------------------------------------|
+| Frontend        | React 18, TypeScript, Vite, shadcn/ui, Tailwind CSS, Lucide  |
+| Backend         | Python 3.11+, FastAPI, Pydantic v2, SQLAlchemy (async)        |
+| LLM             | Ollama (llama3.1:8b local, free) or Anthropic/NVIDIA          |
+| Embeddings      | sentence-transformers (all-MiniLM-L6-v2)                      |
+| Vector Store    | ChromaDB                                                      |
+| Database        | SQLite (via aiosqlite)                                        |
+| Job APIs        | Adzuna, Jobicy, Arbeitnow                                     |
+| Browser Automation | Playwright (Seek), Chrome Extension (LinkedIn)             |
+| Scheduler       | APScheduler (async)                                           |
+| Auth            | JWT (python-jose) + bcrypt                                    |
 
-## Project Structure
-
-```
-ai-career-agent/
-├── app/
-│   ├── main.py                    # FastAPI application entry
-│   ├── core/
-│   │   ├── __init__.py
-│   │   └── config.py              # Settings and environment config
-│   ├── api/
-│   │   ├── __init__.py
-│   │   └── routes.py              # All API endpoints
-│   ├── rag/
-│   │   ├── __init__.py
-│   │   ├── career_rag.py          # Career knowledge base RAG
-│   │   ├── job_rag.py             # Job knowledge base RAG
-│   │   └── application_rag.py     # Application history RAG
-│   ├── agents/
-│   │   ├── __init__.py
-│   │   ├── llm_matcher_agent.py   # LLM-powered job matching
-│   │   ├── resume_agent.py        # Resume/cover letter generation
-│   │   └── insight_agent.py       # Career insights analysis
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── profile_service.py     # Profile management
-│   │   ├── job_service.py         # Job and matching operations
-│   │   └── tracking_service.py    # Application tracking
-│   ├── db/
-│   │   ├── __init__.py
-│   │   └── models.py              # SQLAlchemy models
-│   └── ingestion/
-│       ├── __init__.py
-│       ├── linkedin_scraper.py    # LinkedIn job scraping
-│       ├── seek_scraper.py        # Seek job scraping
-│       └── job_scraper.py         # Unified job scraping interface
-├── frontend-react/
-│   ├── public/
-│   └── src/
-│       ├── api/
-│       │   └── client.ts          # API client with scheduler endpoints
-│       ├── components/
-│       │   └── ...                # Reusable components
-│       ├── context/
-│       │   └── AuthContext.tsx    # Authentication context
-│       ├── pages/
-│       │   ├── Applications.tsx   # Application tracking
-│       │   ├── Dashboard.tsx      # Main dashboard
-│       │   ├── InterviewPrep.tsx  # Interview preparation
-│       │   ├── Jobs.tsx           # Job board with scrape controls
-│       │   ├── Register.tsx       # User registration
-│       │   ├── Resume.tsx         # Profile resume management
-│       │   └── Settings.tsx       # User settings with scheduler monitoring
-│       ├── types/                 # TypeScript type definitions
-│       └── App.tsx                # Main application component
-├── data/
-│   ├── resumes/                   # Resume files
-│   ├── jobs/                      # Job descriptions
-│   └── embeddings/                # ChromaDB persistent storage
-├── prompts/
-│   ├── match_prompt.txt           # Job matching prompt template
-│   └── resume_prompt.txt          # Resume generation prompt
-├── .env.example
-├── requirements.txt
-└── README.md
-```
-
-## Setup Instructions
+## Quick Start
 
 ### Prerequisites
 
-- Python 3.11 or higher
-- Nvidia NIM API key (get one at https://build.nvidia.com/)
-- Git
+- Python 3.11+
+- Node.js 18+
+- Ollama installed and running (`ollama serve`)
+- llama3.1:8b model pulled (`ollama pull llama3.1:8b`)
 
-### 1. Clone and Navigate
+### 1. Clone & Setup Backend
 
 ```bash
+git clone https://github.com/Sharma387/AI_Career_Agent_for_Senior_IT_Leaders.git
 cd AI_Career_Agent_for_Senior_IT_Leaders
-```
 
-### 2. Create Virtual Environment
-
-```bash
-python -m venv venv
-source venv/bin/activate  # macOS/Linux
-# venv\Scripts\activate   # Windows
-```
-
-### 3. Install Dependencies
-
-```bash
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Configure Environment
+### 2. Configure Environment
 
 ```bash
 cp .env.example .env
-# Edit .env and add your OPENAI_API_KEY
+# Edit .env and set:
+# - ADZUNA_APP_ID and ADZUNA_APP_KEY (free: https://developer.adzuna.com/signup)
+# - JWT_SECRET_KEY (any random string)
+# - LLM_PROVIDER=ollama (default)
 ```
 
-### 5. Run the Application
-
-**Terminal 1 - Backend:**
-
-```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-**Terminal 2 - Frontend:**
+### 3. Setup Frontend
 
 ```bash
 cd frontend-react
 npm install
+cd ..
+```
+
+### 4. Run the Application
+
+**Terminal 1 — Backend API:**
+```bash
+source .venv/bin/activate
+uvicorn app.main:app --reload
+```
+
+**Terminal 2 — Frontend Dev Server:**
+```bash
+cd frontend-react
 npm run dev
 ```
 
-Backend API docs: http://localhost:8000/docs
-Frontend UI: http://localhost:5173
+Open **http://localhost:5173** in your browser.
 
-## API Endpoints
-
-### Profile
-
-| Method | Endpoint                         | Description                    |
-|--------|----------------------------------|--------------------------------|
-| POST   | `/api/profile/upload-resume`     | Upload and parse resume file   |
-| GET    | `/api/profile/{profile_id}`      | Get profile and career chunks  |
-| POST   | `/api/profile/{profile_id}/project` | Add detailed project       |
-
-### Jobs
-
-| Method | Endpoint                         | Description                    |
-|--------|----------------------------------|--------------------------------|
-| POST   | `/api/jobs/add`                  | Add job description            |
-| GET    | `/api/jobs`                      | List all jobs                  |
-| POST   | `/api/jobs/{job_id}/match`       | Run job matching analysis      |
-| POST   | `/api/jobs/{job_id}/generate-materials` | Generate resume/cover letter |
-| POST   | `/api/jobs/scrape/trigger`       | Trigger job scraping (manual/external) |
-| POST   | `/api/jobs/scrape/incremental`   | Trigger incremental job scraping |
-| POST   | `/api/jobs/scrape/full`          | Trigger full job scraping      |
-
-### Scheduler
-
-| Method | Endpoint                         | Description                    |
-|--------|----------------------------------|--------------------------------|
-| GET    | `/api/scheduler/status`          | Get scheduler status and next run times |
-| POST   | `/api/scheduler/trigger-incremental` | Manually trigger incremental scrape |
-| POST   | `/api/scheduler/trigger-full`    | Manually trigger full scrape   |
-
-### Applications
-
-| Method | Endpoint                              | Description                 |
-|--------|---------------------------------------|-----------------------------|
-| POST   | `/api/applications/track`             | Track new application       |
-| PUT    | `/api/applications/{id}/status`       | Update application status   |
-| GET    | `/api/applications/stats/{profile_id}` | Get application statistics |
-| GET    | `/api/applications/{profile_id}`      | List all applications       |
-| GET    | `/api/applications/{profile_id}/insights` | Get career insights    |
-
-### Health
-
-| Method | Endpoint      | Description      |
-|--------|---------------|------------------|
-| GET    | `/api/health` | Health check     |
-
-## Sample Usage Workflow
-
-### 1. Upload Resume
+### 5. (Optional) Install Playwright for Seek Scraping
 
 ```bash
-curl -X POST http://localhost:8000/api/profile/upload-resume \
-  -F "file=@data/resumes/sample_resume.txt"
+pip install playwright
+playwright install chromium
 ```
 
-### 2. Add Job Description
+### 6. (Optional) Load LinkedIn Browser Extension
+
+1. Open Chrome → `chrome://extensions/`
+2. Enable Developer mode
+3. Click "Load unpacked" → select the `extension/` folder
+4. Configure API URL (`http://localhost:8000`) and JWT token in the extension popup
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LLM_PROVIDER` | LLM backend: `ollama`, `nvidia`, or `anthropic` | `ollama` |
+| `OLLAMA_MODEL` | Ollama model name | `llama3.1:8b` |
+| `ADZUNA_APP_ID` | Adzuna API app ID (free tier) | — |
+| `ADZUNA_APP_KEY` | Adzuna API key | — |
+| `ADZUNA_COUNTRY` | Job search country code | `nz` |
+| `JWT_SECRET_KEY` | Secret for JWT auth tokens | — |
+| `SEEK_SCRAPING_ENABLED` | Enable Seek Playwright automation | `true` |
+| `SEEK_HEADLESS` | Run Playwright headless | `true` |
+| `SEEK_DAILY_SCRAPE_HOUR` | Daily scrape time (NZ, 24h) | `7` |
+| `SEEK_ROLE_PRESETS` | Comma-separated role IDs for scheduled search | `project-manager,sr-project-manager,...` |
+
+See `.env.example` for the full list.
+
+## Job Search Features
+
+### Adzuna (Primary)
+- Free API with 250 calls/month
+- Covers NZ, AU, UK, US job markets
+- Aggregates from Seek, Trade Me Jobs, and more
+- Role presets: PM, Sr PM, IT Manager, Engineering Manager, IT Director, CTO
+
+### LinkedIn Extension
+- Chrome Manifest V3 extension
+- Navigate to any LinkedIn job → click "Capture Job" button
+- Extracts title, company, description, salary, seniority
+- Posts to your local API — stored and available for matching
+- Zero risk of LinkedIn account restrictions
+
+### Seek Automation
+- Playwright-based browser automation
+- Uses dedicated Chrome profile (not your personal one)
+- Human-like delays (2-5s) between requests
+- CAPTCHA detection with graceful abort
+- Note: Seek uses Cloudflare — may not work consistently in headless mode
+
+### Fallback (Free, No Key)
+- Jobicy (remote IT/tech/management jobs)
+- Arbeitnow (European tech jobs)
+- Automatically activated when Adzuna quota is exhausted
+
+## API Usage Tracking
+
+- Each unique search per day counts as 1 API call
+- Same search on the same day won't hit the API again
+- Monthly usage displayed in the UI (e.g., "API: 248/250 remaining")
+- When quota is exhausted, fallback providers are used automatically
+
+## Testing
 
 ```bash
-curl -X POST http://localhost:8000/api/jobs/add \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Senior Director of Platform Engineering at FinServe Global..."}'
+source .venv/bin/activate
+python -m pytest tests/ -v
 ```
 
-### 3. Run Job Match
+Currently 78 tests covering: API routes, database models, job parser, job scraper, LLM factory, resume parser, agents, deduplication, and LinkedIn ingest endpoint.
+
+## Project Structure
+
+```
+├── app/
+│   ├── agents/          # LLM-powered agents (matcher, resume, insight)
+│   ├── api/             # FastAPI routes + auth
+│   ├── core/            # Config, LLM factory, scheduler, rate limiting
+│   ├── db/              # SQLAlchemy models + async session
+│   ├── ingestion/       # Job parsers, scrapers, adapters (Adzuna, Seek, LinkedIn)
+│   ├── rag/             # ChromaDB vector stores (career, job, application)
+│   ├── services/        # Business logic (profile, job, tracking, document)
+│   └── templates/       # HTML/DOCX templates for resume/cover letter
+├── extension/           # LinkedIn Chrome extension (Manifest V3)
+├── frontend-react/      # React frontend (Vite + shadcn/ui + Tailwind)
+├── tests/               # pytest test suite
+├── .env.example         # Environment variable template
+├── requirements.txt     # Python dependencies
+└── pyproject.toml       # Pytest + Ruff configuration
+```
+
+## Troubleshooting
+
+### "Address already in use" (port 8000)
+
+A previous server instance is still running. Kill it first:
 
 ```bash
-curl -X POST "http://localhost:8000/api/jobs/1/match?profile_id=1"
+lsof -ti:8000 | xargs kill -9
+uvicorn app.main:app --reload
 ```
 
-### 4. Generate Application Materials
+Or use a different port:
 
 ```bash
-curl -X POST "http://localhost:8000/api/jobs/1/generate-materials?profile_id=1"
+uvicorn app.main:app --reload --port 8001
 ```
 
-### 5. Track Application
+### Frontend "npm run dev" fails with package.json not found
+
+You need to be in the `frontend-react` folder:
 
 ```bash
-curl -X POST http://localhost:8000/api/applications/track \
-  -H "Content-Type: application/json" \
-  -d '{"job_id": 1, "profile_id": 1, "status": "applied"}'
+cd frontend-react
+npm run dev
 ```
 
-## Configuration
+### PDF resume upload fails
 
-Environment variables in `.env`:
+- Ensure Ollama is running: `ollama serve`
+- Ensure the model is pulled: `ollama pull llama3.1:8b`
+- If Ollama is slow on first call (loading model), wait 30 seconds and try again
+- The upload will still succeed even if the LLM is unavailable (basic profile created)
 
-| Variable                        | Default                                     | Description                                                                 |
-|---------------------------------|---------------------------------------------|-----------------------------------------------------------------------------|
-| `LLM_PROVIDER`                  | `nvidia`                                    | `nvidia` (remote) or `ollama` (local)                                       |
-| `NVIDIA_API_KEY`                | —                                           | Required if provider=nvidia                                                 |
-| `NVIDIA_BASE_URL`               | `https://integrate.api.nvidia.com/v1`       | Nvidia NIM API endpoint                                                     |
-| `NVIDIA_MODEL`                  | `meta/llama-3.1-8b-instruct`                | Nvidia NIM model                                                            |
-| `OLLAMA_BASE_URL`               | `http://localhost:11434`                    | Ollama server URL (local fallback)                                          |
-| `OLLAMA_MODEL`                  | `llama3.1:8b`                               | Ollama model to use                                                         |
-| `EMBEDDING_MODEL`               | `all-MiniLM-L6-v2`                          | Sentence-transformer model for RAG                                          |
-| `DEBUG`                         | `true`                                      | Enable debug logging                                                        |
-| `LINKEDIN_SCRAPING_ENABLED`     | `false`                                     | Enable LinkedIn job scraping                                                |
-| `LINKEDIN_EMAIL`                | —                                           | LinkedIn email for authentication (if scraping enabled)                     |
-| `LINKEDIN_PASSWORD`             | —                                           | LinkedIn password for authentication (if scraping enabled)                  |
-| `SEEK_SCRAPING_ENABLED`         | `false`                                     | Enable Seek job scraping                                                    |
-| `SEEK_DEFAULT_KEYWORDS`         | —                                           | Default keywords for Seek scraping                                          |
-| `SEEK_DEFAULT_LOCATION`         | —                                           | Default location for Seek scraping                                          |
-| `SCHEDULER_TIMEZONE`            | `Pacific/Auckland`                          | Timezone for scheduler (NZ time)                                            |
-| `BUSINESS_HOURS_START`          | `8`                                         | Start hour for business hours scraping (NZ time, 24-hour format)            |
-| `BUSINESS_HOURS_END`            | `18`                                        | End hour for business hours scraping (NZ time, 24-hour format)              |
-| `INCREMENTAL_SCRAPE_HOURS`      | `2`                                         | Hours back for incremental scrape during business hours                     |
-| `FULL_SCRAPE_TIME_HOUR`         | `2`                                         | Hour for daily full scrape (NZ time, 24-hour format)                        |
-| `FULL_SCRAPE_TIME_MINUTE`       | `0`                                         | Minute for daily full scrape (NZ time)                                      |
-| `SCHEDULER_INCREMENTAL_ENABLED` | `true`                                      | Enable incremental scraping scheduler                                       |
-| `SCHEDULER_FULL_ENABLED`        | `true`                                      | Enable full scraping scheduler                                              |
+### "Module not found" errors on backend start
 
-### Job Scraping Scheduler Configuration
+Make sure you're using the correct virtual environment:
 
-The AI Career Agent includes an internal scheduler for automated job scraping from LinkedIn and Seek. The scheduler runs two types of jobs:
+```bash
+source .venv/bin/activate    # Note: .venv (with dot), not venv
+uvicorn app.main:app --reload
+```
 
-1. **Incremental Scraping**: Runs every 2 hours during business hours to capture recently posted jobs
-2. **Full Scraping**: Runs once daily at 2 AM NZ time for comprehensive job collection
+## License
 
-To enable job scraping:
-- Set `LINKEDIN_SCRAPING_ENABLED=true` and provide LinkedIn credentials
-- Set `SEEK_SCRAPING_ENABLED=true` (once Seek scraping is implemented)
-- Adjust scheduling parameters as needed (business hours, scrape intervals, etc.)
-
-The scheduler automatically starts when the application begins and shuts down gracefully when the application stops.
-
-### Using Local LLM (Ollama)
-
-1. Install Ollama: https://ollama.ai
-2. Start server: `ollama serve`
-3. Pull a model: `ollama pull llama3.1:8b`
-4. Set in `.env`:
-   ```
-   LLM_PROVIDER=ollama
-   OLLAMA_MODEL=llama3.1:8b
-   ```
-
-**Token considerations for local models:**
-- `llama3.1:8b` has 128K context window — sufficient for most career matching tasks
-- Smaller models (3B, 7B) may struggle with complex JSON extraction
-- For best results with local LLMs, use `llama3.1:8b` or `llama3.1:70b`
-
-## Roadmap
-
-### Phase 2: Production Hardening
-
-- React/TypeScript frontend with Tailwind CSS (replacing Streamlit)
-- User authentication (JWT + OAuth)
-- PostgreSQL migration (replacing SQLite)
-- Redis caching for RAG queries
-- Rate limiting and request validation
-
-### Phase 3: Intelligence Expansion
-
-- Job scraping agents (Seek, LinkedIn)
-- Email ingestion (Gmail API)
-- Daily job recommendations engine
-- Auto-apply assistant (optional)
-- Career trend analysis across market data
-
-### Phase 4: Enterprise Features
-
-- Multi-user support for executive coaching firms
-- Custom knowledge base ingestion (company-specific data)
-- Integration with ATS systems (Greenhouse, Lever)
-- White-label deployment options
-
-### Phase 5: AI Agent Autonomy
-
-- Autonomous job application monitoring and alerting
-- Proactive career opportunity identification
-- Automated outreach drafting and follow-up
-- Real-time market intelligence dashboard
-
-### Why Streamlit First, React Later
-
-Streamlit was chosen for the MVP because:
-- Python end-to-end (no JS/TS context switching)
-- RAG libraries are Python-native (LangChain, ChromaDB)
-- 200 lines of Streamlit vs 2000+ lines of React for same functionality
-- Faster iteration for validating core RAG and matching logic
-
-The backend is a clean FastAPI REST API — swapping Streamlit for React is a frontend-only change. All 13 API endpoints stay the same.
+Private project.

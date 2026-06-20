@@ -110,6 +110,7 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
         sq = SecretQuestion(user_id=user.id, question=q, answer_hash="__PENDING__")
         db.add(sq)
     await db.flush()
+    await db.commit()
 
     token = create_access_token(user.id)
     return AuthResponse(
@@ -172,6 +173,7 @@ async def set_secret_questions(
             stored[question].answer_hash = pwd_context.hash(qa["answer"].lower().strip())
 
     await db.flush()
+    await db.commit()
     return {"message": "Secret questions updated successfully"}
 
 
@@ -214,6 +216,7 @@ async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Dep
 
     user.hashed_password = pwd_context.hash(request.new_password)
     await db.flush()
+    await db.commit()
     return {"message": "Password reset successfully"}
 
 
@@ -228,6 +231,7 @@ async def change_password(
 
     user.hashed_password = pwd_context.hash(request.new_password)
     await db.flush()
+    await db.commit()
     return {"message": "Password changed successfully"}
 
 
@@ -247,4 +251,5 @@ async def assign_questions(
         sq = SecretQuestion(user_id=user.id, question=q, answer_hash="__PENDING__")
         db.add(sq)
     await db.flush()
+    await db.commit()
     return {"message": "Questions assigned successfully", "assigned": True}

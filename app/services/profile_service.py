@@ -34,21 +34,33 @@ class ProfileService:
             self._parser = ResumeParser()
         return self._parser
 
-    async def upload_resume(self, file_path: str, db_session: AsyncSession, user_id: int | None = None) -> dict:
+    async def upload_resume(self, file_path: str, db_session: AsyncSession, user_id: int | None = None, original_file_data: bytes | None = None, original_file_name: str | None = None) -> dict:
         raw_text = self.parser.parse(file_path)
-        sections = self.parser.extract_sections(raw_text)
+        
+        # Use AI to parse resume sections (replaces brittle regex parsing)
+        from app.ingestion.ai_resume_parser import parse_resume_with_ai
+        parsed = parse_resume_with_ai(raw_text)
+        
+        # Also get the expanded profile with STAR stories from the career expander
         expanded = self.expander.expand_profile(raw_text)
 
-        contact = sections.get("contact_info", "")
-        name = contact.split("\n")[0].strip() if contact else "Unknown"
-        email_match = re.search(r"[\w.-]+@[\w.-]+\.[\w]+", contact)
-        email = email_match.group(0) if email_match else None
+        name = parsed.get("full_name") or "Unknown"
+        email = parsed.get("email") or None
+        phone = parsed.get("phone") or None
+        location = parsed.get("location") or None
+        linkedin = parsed.get("linkedin") or None
 
         profile = CareerProfile(
             full_name=name,
             email=email,
-            summary=expanded.get("summary", ""),
+            phone=phone,
+            linkedin_url=linkedin,
+            summary=parsed.get("summary") or expanded.get("summary", ""),
             raw_resume_text=raw_text,
+            original_file_data=original_file_data,
+            original_file_name=original_file_name,
+            interests=parsed.get("interests") or None,
+            education=parsed.get("education") or None,
         )
         profile.user_id = user_id
         db_session.add(profile)
@@ -86,21 +98,25 @@ class ProfileService:
             )
             db_session.add(proj)
 
-        for category, skills_list in expanded.get("skills_by_category", {}).items():
-            for skill_name in skills_list:
-                skill = Skill(
-                    profile_id=profile.id,
-                    name=skill_name,
-                    category=category,
-                )
-                db_session.add(skill)
+        # Store skills — prefer AI-parsed skills, fall back to expander
+        skills_data = parsed.get("skills", {}) or expanded.get("skills_by_category", {})
+        if isinstance(skills_data, dict):
+            for category, skills_list in skills_data.items():
+                if isinstance(skills_list, list):
+                    for skill_name in skills_list:
+                        skill = Skill(
+                            profile_id=profile.id,
+                            name=skill_name,
+                            category=category,
+                        )
+                        db_session.add(skill)
 
-        for cert_text in sections.get("certifications", "").split("\n"):
-            cert_text = cert_text.strip()
-            if cert_text:
+        # Store certifications from AI parser
+        for cert_name in parsed.get("certifications", []):
+            if cert_name and cert_name.strip():
                 cert = Certification(
                     profile_id=profile.id,
-                    name=cert_text,
+                    name=cert_name.strip(),
                 )
                 db_session.add(cert)
 
@@ -178,6 +194,8 @@ class ProfileService:
             "summary": expanded.get("summary", ""),
             "projects_count": projects_count,
             "skills_count": skills_count,
+            "raw_resume_text": raw_text,
+            "formatted_resume_html": formatted_html,
         }
 
     async def get_profile(self, profile_id: int, db_session: AsyncSession) -> dict:
@@ -188,7 +206,10 @@ class ProfileService:
         if not profile:
             return {}
 
-        chunks = self.career_rag.get_all_chunks()
+        try:
+            chunks = self.career_rag.get_all_chunks()
+        except Exception:
+            chunks = []
 
         projects_result = await db_session.execute(
             select(Project).where(Project.profile_id == profile_id)
@@ -200,12 +221,27 @@ class ProfileService:
         )
         skills = skills_result.scalars().all()
 
+        certs_result = await db_session.execute(
+            select(Certification).where(Certification.profile_id == profile_id)
+        )
+        certs = certs_result.scalars().all()
+
         return {
             "profile": {
                 "id": profile.id,
                 "full_name": profile.full_name,
                 "email": profile.email,
+                "phone": profile.phone,
+                "linkedin_url": profile.linkedin_url,
                 "summary": profile.summary,
+                "raw_resume_text": profile.raw_resume_text or "",
+                "formatted_resume_html": profile.formatted_resume_html or "",
+                "interests": profile.interests or [],
+                "education": profile.education or [],
+                "certifications": [
+                    {"name": c.name, "issuer": c.issuer or ""}
+                    for c in certs
+                ],
                 "created_at": profile.created_at.isoformat() if profile.created_at else None,
             },
             "projects": [

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
+import { Sparkles, Mail, Lock } from 'lucide-react';
 
 type ForgotStep = 'email' | 'questions' | 'success';
 
@@ -87,25 +88,30 @@ export function Login() {
 
   if (showForgot) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
+      <div className="min-h-screen flex items-center justify-center bg-[#080C18]">
         <div className="w-full max-w-md p-8">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-white">AI Career Agent</h1>
-            <p className="text-slate-400 mt-2">Reset your password</p>
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                <Sparkles className="w-5 h-5 text-white" />
+              </div>
+            </div>
+            <h1 className="text-2xl font-bold text-white">Reset Password</h1>
+            <p className="text-slate-500 mt-1 text-sm">Recover your account access</p>
           </div>
 
-          <div className="bg-white rounded-xl shadow-xl p-8">
+          <div className="rounded-xl border border-[#1E2D4A] bg-[#0E1628] p-8">
             {forgotError && (
-              <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm mb-4">
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg text-sm mb-4">
                 {forgotError}
               </div>
             )}
 
             {forgotStep === 'email' && (
               <div className="space-y-5">
-                <p className="text-sm text-gray-600">Enter your email to retrieve your security questions.</p>
+                <p className="text-sm text-slate-400">Enter your email to retrieve your security questions.</p>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
                   <input
                     type="email"
                     value={forgotEmail}
@@ -121,7 +127,7 @@ export function Login() {
                 >
                   {forgotLoading ? 'Loading...' : 'Continue'}
                 </button>
-                <button onClick={resetForgotFlow} className="w-full text-sm text-gray-600 hover:text-gray-800">
+                <button onClick={resetForgotFlow} className="w-full text-sm text-slate-500 hover:text-slate-300 transition-colors">
                   Back to Sign In
                 </button>
               </div>
@@ -129,10 +135,10 @@ export function Login() {
 
             {forgotStep === 'questions' && (
               <form onSubmit={handleResetPassword} className="space-y-5">
-                <p className="text-sm text-gray-600">Answer your security questions and set a new password.</p>
+                <p className="text-sm text-slate-400">Answer your security questions and set a new password.</p>
                 {secretQuestions.map((q, i) => (
                   <div key={i} className="space-y-1">
-                    <label className="block text-sm font-medium text-gray-700">{q.question}</label>
+                    <label className="block text-sm font-medium text-slate-300">{q.question}</label>
                     <input
                       type="text"
                       value={q.answer}
@@ -143,7 +149,7 @@ export function Login() {
                   </div>
                 ))}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">New Password</label>
                   <input
                     type="password"
                     value={newPassword}
@@ -154,7 +160,7 @@ export function Login() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">Confirm New Password</label>
                   <input
                     type="password"
                     value={confirmNewPassword}
@@ -171,7 +177,7 @@ export function Login() {
                 >
                   {forgotLoading ? 'Resetting...' : 'Reset Password'}
                 </button>
-                <button type="button" onClick={resetForgotFlow} className="w-full text-sm text-gray-600 hover:text-gray-800">
+                <button type="button" onClick={resetForgotFlow} className="w-full text-sm text-slate-500 hover:text-slate-300 transition-colors">
                   Back to Sign In
                 </button>
               </form>
@@ -179,8 +185,8 @@ export function Login() {
 
             {forgotStep === 'success' && (
               <div className="space-y-5 text-center">
-                <div className="text-green-600 text-lg font-medium">Password reset successful!</div>
-                <p className="text-sm text-gray-600">You can now sign in with your new password.</p>
+                <div className="text-emerald-400 text-lg font-medium">Password reset successful!</div>
+                <p className="text-sm text-slate-400">You can now sign in with your new password.</p>
                 <button onClick={resetForgotFlow} className="w-full btn-primary py-3">
                   Back to Sign In
                 </button>
@@ -193,41 +199,56 @@ export function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
+    <div className="min-h-screen flex items-center justify-center bg-[#080C18]">
       <div className="w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white">AI Career Agent</h1>
-          <p className="text-slate-400 mt-2">Sign in to your account</p>
+          <div className="flex items-center justify-center gap-2 mb-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+          </div>
+          <h1 className="text-2xl font-bold text-white">
+            Career<span className="text-blue-400">AI</span>
+          </h1>
+          <p className="text-slate-500 mt-1 text-sm">Sign in to your account</p>
         </div>
 
-        <div className="bg-white rounded-xl shadow-xl p-8">
+        <div className="rounded-xl border border-[#1E2D4A] bg-[#0E1628] p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg text-sm">
                 {error}
               </div>
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input-field"
-                required
-              />
+              <label className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="input-field pl-10"
+                  placeholder="you@example.com"
+                  required
+                />
+              </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input-field"
-                required
-              />
+              <label className="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="input-field pl-10"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
             </div>
 
             <button
@@ -242,15 +263,15 @@ export function Login() {
           <div className="text-center mt-4">
             <button
               onClick={() => { setShowForgot(true); setForgotEmail(email); }}
-              className="text-sm text-blue-600 hover:text-blue-700"
+              className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
             >
               Forgot Password?
             </button>
           </div>
 
-          <p className="text-center text-sm text-gray-600 mt-6">
+          <p className="text-center text-sm text-slate-500 mt-6">
             Don't have an account?{' '}
-            <Link to="/register" className="text-blue-600 hover:text-blue-700 font-medium">
+            <Link to="/register" className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
               Register
             </Link>
           </p>

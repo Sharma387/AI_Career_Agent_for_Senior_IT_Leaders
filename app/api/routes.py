@@ -81,14 +81,20 @@ async def upload_resume(
     db_session: AsyncSession = Depends(get_db),
     user: User | None = Depends(get_current_user),
 ):
-    allowed = {"application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain"}
+    allowed = {"application/pdf", "application/x-pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain"}
     if file.content_type not in allowed:
-        raise HTTPException(status_code=400, detail="File must be PDF, DOCX, or TXT")
+        # Also allow by file extension as fallback
+        filename = file.filename or ""
+        ext = filename.lower().split(".")[-1] if "." in filename else ""
+        if ext not in ("pdf", "docx", "txt", "doc"):
+            raise HTTPException(status_code=400, detail="File must be PDF, DOCX, or TXT")
 
     suffix = ""
-    if file.content_type == "application/pdf":
+    filename = file.filename or ""
+    ext = filename.lower().split(".")[-1] if "." in filename else ""
+    if file.content_type == "application/pdf" or file.content_type == "application/x-pdf" or ext == "pdf":
         suffix = ".pdf"
-    elif file.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+    elif file.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or ext == "docx":
         suffix = ".docx"
     else:
         suffix = ".txt"
@@ -99,7 +105,12 @@ async def upload_resume(
         tmp_path = tmp.name
 
     try:
-        result = await profile_service.upload_resume(tmp_path, db_session, user_id=user.id if user else None)
+        result = await profile_service.upload_resume(
+            tmp_path, db_session,
+            user_id=user.id if user else None,
+            original_file_data=content,
+            original_file_name=file.filename or f"resume{suffix}",
+        )
         return result
     finally:
         os.unlink(tmp_path)
@@ -111,7 +122,7 @@ async def get_my_profile(
     db_session: AsyncSession = Depends(get_db),
 ):
     result = await db_session.execute(
-        select(CareerProfile).where(CareerProfile.user_id == user.id)
+        select(CareerProfile).where(CareerProfile.user_id == user.id).order_by(CareerProfile.id.desc()).limit(1)
     )
     profile = result.scalar_one_or_none()
     if not profile:
@@ -153,6 +164,37 @@ async def download_base_resume_html(
         BytesIO(html.encode()),
         media_type="text/html",
         headers=headers,
+    )
+
+
+@router.get("/api/profile/{profile_id}/resume/original")
+async def get_original_resume(
+    profile_id: int,
+    db_session: AsyncSession = Depends(get_db),
+):
+    """Serve the original uploaded resume file (PDF/DOCX/TXT)."""
+    result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == profile_id)
+    )
+    profile = result.scalar_one_or_none()
+    if not profile or not profile.original_file_data:
+        raise HTTPException(status_code=404, detail="Original resume file not found")
+
+    filename = profile.original_file_name or "resume"
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf"
+
+    media_types = {
+        "pdf": "application/pdf",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "txt": "text/plain",
+        "doc": "application/msword",
+    }
+    media_type = media_types.get(ext, "application/octet-stream")
+
+    return StreamingResponse(
+        BytesIO(profile.original_file_data),
+        media_type=media_type,
+        headers={"Content-Disposition": f"inline; filename={filename}"},
     )
 
 
