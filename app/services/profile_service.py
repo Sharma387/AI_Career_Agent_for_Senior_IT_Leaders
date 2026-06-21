@@ -46,10 +46,13 @@ class ProfileService:
         # Stage 1: Extract text (with OCR fallback handled internally)
         raw_text = self.parser.parse(file_path)
 
-        # Stage 2: Parse with chunked AI parser
+        # Stage 2: Parse with chunked AI parser (v1.0 schema)
         from app.ingestion.ai_resume_parser import parse_resume_with_ai, chunk_resume
         parsed = parse_resume_with_ai(raw_text)
         chunks_processed = len(chunk_resume(raw_text))
+
+        # Extract full v1.0 schema
+        full_schema = parsed.pop("_full_schema", None)
 
         # Stage 3: Validate
         validation = validate_parsed_resume(parsed)
@@ -66,6 +69,11 @@ class ProfileService:
         location = parsed.get("location") or None
         linkedin = parsed.get("linkedin") or None
 
+        # Extract v1.0 specific fields
+        v1_resume = (full_schema or {}).get("resume", {})
+        v1_pi = v1_resume.get("personal_info", {})
+        v1_ps = v1_resume.get("professional_summary", {})
+
         profile = CareerProfile(
             full_name=name,
             email=email,
@@ -77,6 +85,17 @@ class ProfileService:
             original_file_name=original_file_name,
             interests=parsed.get("interests") or None,
             education=parsed.get("education") or None,
+            # v1.0 schema fields
+            parsed_resume_v1=full_schema,
+            preferred_name=v1_pi.get("preferred_name") or None,
+            headline=v1_pi.get("headline") or None,
+            github_url=v1_pi.get("github") or None,
+            portfolio_url=v1_pi.get("portfolio") or None,
+            years_experience=v1_ps.get("years_experience") or None,
+            seniority_level=v1_ps.get("seniority_level") or None,
+            languages=v1_resume.get("languages") or None,
+            preferences=v1_resume.get("preferences") or None,
+            ats_metadata=v1_resume.get("ats_metadata") or None,
         )
         profile.user_id = user_id
         db_session.add(profile)
@@ -257,6 +276,17 @@ class ProfileService:
                     for c in certs
                 ],
                 "created_at": profile.created_at.isoformat() if profile.created_at else None,
+                # v1.0 schema fields
+                "parsed_resume_v1": profile.parsed_resume_v1,
+                "headline": profile.headline,
+                "preferred_name": profile.preferred_name,
+                "github_url": profile.github_url,
+                "portfolio_url": profile.portfolio_url,
+                "years_experience": profile.years_experience,
+                "seniority_level": profile.seniority_level,
+                "languages": profile.languages,
+                "preferences": profile.preferences,
+                "ats_metadata": profile.ats_metadata,
             },
             "projects": [
                 {

@@ -68,6 +68,19 @@ class CareerProfile(Base):
     original_file_name = Column(String(255), nullable=True)
     interests = Column(JSON, nullable=True)
     education = Column(JSON, nullable=True)
+
+    # v1.0 schema fields
+    parsed_resume_v1 = Column(JSON, nullable=True)  # Stores the full v1.0 schema
+    preferred_name = Column(String(255), nullable=True)
+    headline = Column(String(500), nullable=True)
+    github_url = Column(String(512), nullable=True)
+    portfolio_url = Column(String(512), nullable=True)
+    years_experience = Column(Integer, nullable=True)
+    seniority_level = Column(String(50), nullable=True)
+    languages = Column(JSON, nullable=True)  # [{"language": "", "proficiency": ""}]
+    preferences = Column(JSON, nullable=True)  # preferred_roles, locations, remote, salary
+    ats_metadata = Column(JSON, nullable=True)  # keywords, completeness_score
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
