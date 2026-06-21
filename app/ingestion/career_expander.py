@@ -63,38 +63,45 @@ You must respond with valid JSON matching this structure:
 Respond ONLY with the JSON object. No other text."""
 
 
-STRUCTURED_EXPAND_PROMPT = """You are an expert career coach for senior IT leaders.
-Given this structured career data, expand into projects with STAR stories and achievements.
+STRUCTURED_EXPAND_PROMPT = """You are a career content enricher. You receive ALREADY PARSED structured career data.
 
-RULES:
-- Only expand on what is explicitly provided. Do NOT hallucinate or invent details.
-- Generate STAR stories from the experience entries.
-- Create project entries from the most significant accomplishments in each role.
-- Group and expand skills logically.
+YOUR ONLY JOB: Expand achievements into STAR stories and create project summaries.
 
-Respond with valid JSON matching this structure:
+YOU MUST NOT:
+- Re-extract skills (skills are already parsed — do not touch them)
+- Re-detect job titles or companies (already parsed)
+- Re-parse resume structure (already done)
+- Add skills, certifications, or experience not in the input
+- Change any factual information
+
+YOU MUST:
+- For each experience entry's achievements, create expanded STAR stories
+- Identify major projects from achievements
+- Create a 3-4 sentence professional summary from the headline + experience
+- Preserve the experience ORDER exactly as given
+
+INPUT: Structured JSON with experience[], skills{}, certifications[]
+OUTPUT: Enriched JSON with projects[] and STAR stories
+
+Respond with ONLY this JSON:
 {
-  "summary": "A comprehensive 3-4 sentence professional summary",
+  "summary": "3-4 sentence professional summary",
   "detailed_projects": [
     {
-      "title": "project or initiative name",
+      "title": "project name (from an achievement)",
       "description": "expanded narrative",
-      "role": "your role",
-      "technologies": ["tech1", "tech2"],
-      "impact": "measurable business impact",
-      "star_stories": [{"situation": "...", "task": "...", "action": "...", "result": "..."}]
+      "role": "the role held during this project",
+      "technologies": ["only technologies mentioned"],
+      "impact": "measurable outcome",
+      "star_stories": [{"situation": "", "task": "", "action": "", "result": ""}]
     }
   ],
-  "skills_by_category": {
-    "leadership": ["skill1"],
-    "technical": ["skill1"],
-    "methodologies": ["skill1"]
-  },
-  "key_achievements": ["achievement1"],
-  "interview_stories": [{"situation": "...", "task": "...", "action": "...", "result": "..."}]
+  "key_achievements": ["verbatim achievements from input"],
+  "interview_stories": [{"situation": "", "task": "", "action": "", "result": ""}]
 }
 
-Respond ONLY with the JSON object."""
+Do NOT include a skills_by_category field — skills are already handled.
+Respond ONLY with JSON. No markdown, no explanation."""
 
 
 class CareerExpander:
@@ -110,19 +117,19 @@ class CareerExpander:
 
     def expand_from_parsed(self, parsed_resume: dict) -> dict:
         """
-        Expand a pre-parsed structured resume into projects with STAR stories.
+        Expand pre-parsed structured resume into projects with STAR stories.
 
-        Takes the structured output from AI parser (not raw text), using only
-        the experience[] and skills{} to generate expanded content.
-        Much faster since structured input = fewer tokens.
+        This is a TRANSFORMER, not a parser:
+        - Input: structured parsed data (experience, skills already extracted)
+        - Output: projects, STAR stories, achievements
+        - Does NOT re-extract skills or re-parse structure
         """
-        # Build concise structured input from parsed data
+        # Only pass experience data — skills are already handled by parser
         structured_input = {
             "name": parsed_resume.get("full_name", ""),
             "headline": parsed_resume.get("headline", ""),
             "summary": parsed_resume.get("summary", ""),
             "experience": parsed_resume.get("experience", []),
-            "skills": parsed_resume.get("skills", {}),
             "certifications": parsed_resume.get("certifications", []),
         }
 
@@ -137,16 +144,24 @@ class CareerExpander:
             response = self.llm.invoke(messages)
             raw = response.content.strip()
 
-            if raw.startswith("```"):
-                raw = re.sub(r"^```\w*\n?", "", raw)
-                raw = re.sub(r"\n?```$", "", raw)
+            if "```" in raw:
+                parts = raw.split("```")
+                if len(parts) >= 3:
+                    json_part = parts[1]
+                    if json_part.startswith("json"):
+                        json_part = json_part[4:]
+                    raw = json_part.strip()
 
             profile = json.loads(raw)
+
+            # CRITICAL: Do not let expander override skills — use parser's skills
+            profile["skills_by_category"] = parsed_resume.get("skills", {})
+
         except json.JSONDecodeError:
             logger.warning("Career expander returned non-JSON, using fallback")
             profile = self._fallback_from_parsed(parsed_resume)
         except Exception as e:
-            logger.error(f"Career expansion from parsed data failed: {e}")
+            logger.error(f"Career expansion failed: {e}")
             profile = self._fallback_from_parsed(parsed_resume)
 
         return self._ensure_defaults(profile)
