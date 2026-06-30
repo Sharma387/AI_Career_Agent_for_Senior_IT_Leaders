@@ -40,7 +40,7 @@ class ProfileService:
             self._parser = ResumeParser()
         return self._parser
 
-    async def upload_resume(self, file_path: str, db_session: AsyncSession, user_id: int | None = None, original_file_data: bytes | None = None, original_file_name: str | None = None) -> dict:
+    async def upload_resume(self, file_path: str, db_session: AsyncSession, user_id: int | None = None, original_file_data: bytes | None = None, original_file_name: str | None = None, parse_model: str | None = None, parse_api_key: str | None = None) -> dict:
         start_time = time.time()
 
         # Stage 1: Extract text (with OCR fallback handled internally)
@@ -48,7 +48,7 @@ class ProfileService:
 
         # Stage 2: Parse with chunked AI parser (v1.0 schema)
         from app.ingestion.ai_resume_parser import parse_resume_with_ai, chunk_resume
-        parsed = parse_resume_with_ai(raw_text)
+        parsed = parse_resume_with_ai(raw_text, model=parse_model, api_key=parse_api_key)
         chunks_processed = len(chunk_resume(raw_text))
 
         # Extract full v1.0 schema
@@ -133,7 +133,32 @@ class ProfileService:
         )
         db_session.add(audit_record)
 
-        for project in expanded.get("detailed_projects", []):
+        # --- Store Projects ---
+        # If career expander produced projects, use those.
+        # FALLBACK: If no projects found, create project entries from work experience
+        # (preserves original CV structure rather than leaving projects empty)
+        projects_to_store = expanded.get("detailed_projects", [])
+
+        if not projects_to_store:
+            logger.info("No projects from expander — creating from work experience (fallback)")
+            for exp in parsed.get("experience", []):
+                if not isinstance(exp, dict):
+                    continue
+                role = exp.get("role", exp.get("role_title", ""))
+                company = exp.get("company", "")
+                achievements = exp.get("achievements", [])
+                # Each experience entry becomes a project
+                if role or company:
+                    projects_to_store.append({
+                        "title": f"{role} at {company}" if company else role,
+                        "description": "; ".join(achievements[:3]) if achievements else "",
+                        "role": role,
+                        "technologies": exp.get("tech_stack", []),
+                        "impact": achievements[0] if achievements else "",
+                        "star_stories": [],
+                    })
+
+        for project in projects_to_store:
             star_stories = project.get("star_stories", [])
             star_situation = ""
             star_task = ""
@@ -152,7 +177,7 @@ class ProfileService:
                 title=project.get("title", ""),
                 description=project.get("description", ""),
                 role=project.get("role", ""),
-                technologies=", ".join(project.get("technologies", [])),
+                technologies=", ".join(project.get("technologies", [])) if isinstance(project.get("technologies"), list) else str(project.get("technologies", "")),
                 impact=project.get("impact", ""),
                 star_situation=star_situation,
                 star_task=star_task,

@@ -20,7 +20,7 @@ The system uses **three independent RAG knowledge bases**, each stored as a sepa
                     ▼                 ▼                  ▼
             ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐
             │  Career RAG  │  │   Job RAG    │  │  Application RAG │
-            │  (STATIC)    │  │  (DYNAMIC)   │  │  (ANALYTICS)     │
+            │  (GRANULAR)  │  │  (DYNAMIC)   │  │  (ANALYTICS)     │
             └──────┬───────┘  └──────┬───────┘  └────────┬─────────┘
                    │                 │                    │
                    ▼                 ▼                    ▼
@@ -34,8 +34,8 @@ The system uses **three independent RAG knowledge bases**, each stored as a sepa
                                      ▼
                           ┌─────────────────────┐
                           │   LLM Agent Layer   │
-                          │  (Nvidia NIM /      │
-                          │   Ollama)           │
+                          │  (Ollama / OpenAI / │
+                          │   Anthropic)        │
                           └─────────────────────┘
 ```
 
@@ -45,79 +45,55 @@ Each RAG module is independent — no cross-contamination between knowledge base
 
 ## 2. The Three RAG Knowledge Bases
 
-### 2.1 Career RAG (Static Knowledge Base)
+### 2.1 Career RAG (Granular Knowledge Base)
 
-**Purpose:** Stores everything about the user's professional history — resume, projects, skills, certifications.
+**Purpose:** Stores everything about the user's professional history — resume, projects, skills, certifications — with per-section granularity for precise retrieval.
 
 **File:** `app/rag/career_rag.py`
 
-**What gets ingested:**
+**Granular Ingestion (v2):**
+
+The career RAG now uses granular ingestion via `ingest_granular()` instead of a single monolithic document:
 
 | Data Type | Source | Ingestion Method | Metadata Tag |
 |-----------|--------|------------------|--------------|
-| Resume text | Uploaded file (PDF/DOCX/TXT) | Split into 500-char chunks | `type: "resume"` |
-| Project narratives | Career Expander (LLM) or manual form | Split into 500-char chunks | `type: "project"` |
-| Individual skills | Extracted from resume | Single document per skill | `type: "skill"` |
-| Certifications | Extracted from resume | Single document per cert | `type: "cert"` |
+| Each work experience entry | AI Parser v1.0 | Individual document per role | `type: "experience"` |
+| Each project | Career Expander / fallback | Individual document per project | `type: "project"` |
+| Skills summary | AI Parser | Combined skills document | `type: "skills"` |
+| Certifications | AI Parser | Combined certs document | `type: "certification"` |
+| Resume overview | Raw text (chunked) | Split into 500-char chunks | `type: "resume"` |
 
 **Ingestion flow:**
 
 ```
-Resume File (PDF/DOCX/TXT)
+Resume Upload
         │
         ▼
 ┌──────────────────┐
-│  ResumeParser    │  Extracts raw text + structured sections
-│  .parse()        │  (contact, summary, experience, skills, certs)
-│  .extract_sections()
+│ AI Resume Parser │  Chunked extraction → v1.0 schema
+│ (Stage 2)        │  
 └────────┬─────────┘
          │
          ▼
 ┌──────────────────┐
-│  CareerExpander  │  LLM-powered expansion of resume bullets
-│  .expand_profile │  into detailed project narratives, STAR stories,
-│                  │  and categorized skills
+│ Career Expander  │  Expands into STAR stories, detailed projects
+│ (Stage 4)        │
 └────────┬─────────┘
          │
          ▼
 ┌──────────────────┐
-│  CareerRAG       │  Chunks and embeds all data into ChromaDB
-│  .ingest_profile │  with type metadata for filtering
+│  CareerRAG       │  Granular ingestion: one document per
+│ .ingest_granular │  experience, project, skill group, cert
 └──────────────────┘
 ```
 
-**Chunking strategy:**
-- **Text splitter:** `RecursiveCharacterTextSplitter`
-- **Chunk size:** 500 characters
-- **Chunk overlap:** 50 characters (preserves context across boundaries)
-- **Why these values:** 500 chars is large enough for meaningful context but small enough for precise retrieval. 50-char overlap prevents losing sentence context at split points.
-
-**Example of what gets stored:**
-
-```
-Chunk 1 (type: "resume"):
-"Sharma Rajasekar\n\nProject Manager\n\nHighly Skilled Customer 
-Focused Project Manager with 20+ years of experience in delivering 
-strategic projects in the Healthcare, Airline, and Retail sectors..."
-
-Chunk 2 (type: "project"):
-"Project: SAP Implementation\nRole: Delivery Lead\nDescription: 
-Led end-to-end delivery of SAP S/4HANA migration for 3 business 
-units...\nTechnologies: SAP, ABAP, Fiori, Azure DevOps..."
-
-Chunk 3 (type: "skill"):
-"Skill: Kubernetes\nCategory: technical\nLevel: expert\nYears: 8"
-
-Chunk 4 (type: "cert"):
-"Certification: AWS Solutions Architect Professional\nIssuer: AWS\n
-Date: 2022-01-01\nExpiry: 2025-01-01"
-```
+**Why granular:** When matching against a job that requires "Kubernetes experience", the retriever can pull back just the specific experience entry mentioning Kubernetes — not a 5000-char resume chunk that might bury the relevant detail.
 
 ---
 
 ### 2.2 Job RAG (Dynamic Knowledge Base)
 
-**Purpose:** Stores job descriptions the user is interested in, extracted and chunked for matching.
+**Purpose:** Stores job descriptions for matching and retrieval.
 
 **File:** `app/rag/job_rag.py`
 
@@ -125,41 +101,11 @@ Date: 2022-01-01\nExpiry: 2025-01-01"
 
 | Data Type | Source | Ingestion Method |
 |-----------|--------|------------------|
-| Job descriptions | Manual paste or future email parsing | Split into 500-char chunks |
+| Full job descriptions | Manual paste ("My Jobs") | Split into 500-char chunks |
+| Adzuna snippets | API search ("Discover") | NOT ingested (snippets only) |
+| LinkedIn captures | Browser extension | Full JD ingested |
 
-**Ingestion flow:**
-
-```
-Job Description Text
-        │
-        ▼
-┌──────────────────┐
-│  JobParser       │  Extracts: title, company, seniority,
-│  .parse_job_     │  requirements, skills, salary range
-│  description()   │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│  JobRAG          │  Combines parsed fields into structured text,
-│  .ingest_job()   │  chunks, embeds with job metadata
-└──────────────────┘
-```
-
-**What gets stored per job:**
-
-```
-Chunk (type: "job", job_id: 1, company: "FinServe Global", 
-       title: "Senior Director of Platform Engineering"):
-"Job ID: 1\nTitle: Senior Director of Platform Engineering\n
-Company: FinServe Global\nSeniority Level: senior\n
-Description: We are looking for a leader to head our platform 
-engineering organization...\nRequirements: 10+ years experience, 
-team leadership, cloud architecture...\nSkills: Kubernetes, AWS, 
-microservices, CI/CD"
-```
-
-**Metadata includes:** `job_id`, `company`, `title` — enables filtering and attribution during retrieval.
+**Note:** Adzuna returns only snippets (~200 chars). For full matching, users must paste the complete JD into "My Jobs" manually.
 
 ---
 
@@ -173,36 +119,11 @@ microservices, CI/CD"
 
 | Data Type | Source | Ingestion Method |
 |-----------|--------|------------------|
-| Application records | Tracking service | Split into 500-char chunks |
+| Application records | Tracking service | Individual documents |
 | Status updates | Manual or API | Appended as new documents |
 | Feedback/rejection notes | Manual input | Included in document text |
 
-**Ingestion flow:**
-
-```
-Application Event (track/update)
-        │
-        ▼
-┌──────────────────┐
-│  ApplicationRAG  │  Creates a document with job title, company,
-│  .ingest_        │  status, date, rejection stage, and feedback
-│  application()   │  Chunks and embeds with status metadata
-└──────────────────┘
-```
-
-**What gets stored:**
-
-```
-Chunk (type: "application", company: "FinServe Global", 
-       status: "rejected", job_title: "Senior Director"):
-"Job Title: Senior Director of Platform Engineering\n
-Company: FinServe Global\nStatus: rejected\n
-Date Applied: 2026-05-15\nRejection Stage: technical_interview\n
-Feedback: Strong technical skills but lacked fintech domain 
-experience in regulatory compliance."
-```
-
-**Key design decision:** Each status update creates a **new document** in the collection. This means the RAG store accumulates a complete history of every application lifecycle event, enabling the Insight Agent to analyze patterns over time.
+Each status update creates a **new document** — accumulates complete history for pattern analysis.
 
 ---
 
@@ -213,23 +134,23 @@ experience in regulatory compliance."
 **Why this model:**
 - 384-dimensional embeddings — fast and efficient
 - Good semantic understanding for English text
-- Runs locally via sentence-transformers — no API calls needed
-- 512 token input limit — sufficient for 500-char chunks
+- Runs locally — no API calls needed
+- 512 token input limit — sufficient for chunked documents
 
 **Vector store:** ChromaDB (persistent, local)
 
 **Configuration:**
 ```python
 # app/core/config.py
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # HuggingFace model
-TOP_K_RETRIEVAL = 5                    # Return top 5 matches
-CHROMA_PERSIST_DIR = "data/embeddings" # Storage location
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+TOP_K_RETRIEVAL = 5
+CHROMA_PERSIST_DIR = "app/data/embeddings"
 ```
 
-**Separate collections per knowledge base:**
+**Storage layout:**
 ```
-data/embeddings/
-├── career/          # Career profile embeddings
+app/data/embeddings/
+├── career/          # Career profile embeddings (granular)
 ├── jobs/            # Job description embeddings
 └── applications/    # Application history embeddings
 ```
@@ -238,27 +159,10 @@ data/embeddings/
 
 ## 4. Retrieval Flow
 
-### 4.1 Query Execution
-
-When a query is made against any RAG module:
-
-```python
-# Example: CareerRAG.query()
-def query(self, query_text: str, k: int = 5):
-    return self.client.similarity_search_with_relevance_scores(
-        query_text, k=k
-    )
-```
-
-This returns a list of `(Document, score)` tuples, where:
-- `Document.page_content` = the chunk text
-- `Document.metadata` = type, job_id, company, etc.
-- `score` = relevance score (0-1, higher = more relevant)
-
-### 4.2 Full Retrieval Pipeline (Job Matching Example)
+### 4.1 Job Matching Pipeline
 
 ```
-User clicks "Match Job"
+User clicks "Match" on a job
         │
         ▼
 ┌─────────────────────────────┐
@@ -269,36 +173,36 @@ User clicks "Match Job"
 │  3. Get ALL career chunks   │ ◄── CareerRAG.get_all_chunks()
 │  4. Ingest job into JobRAG  │ ◄── JobRAG.ingest_job()
 │  5. Query JobRAG with       │ ◄── JobRAG.query(job_text)
-│     job text                │     Returns top 5 job chunks
-│  6. Pass both chunk sets    │
-│     to JobMatcherAgent      │
+│     job text (top 5)        │
+│  6. Pass both to agent      │
 └─────────────┬───────────────┘
               │
               ▼
 ┌─────────────────────────────┐
-│  JobMatcherAgent.match_job()│
+│  JobMatcherAgent            │
 │                             │
-│  1. Join career chunks      │
-│     into single context     │
-│  2. Join job chunks         │
-│     into single context     │
-│  3. Build prompt with both  │
-│     contexts + scoring      │
-│     criteria                │
-│  4. Call LLM                │
-│  5. Parse JSON response     │
-│  6. Clamp scores, assign    │
-│     recommendation          │
+│  Prompt includes:           │
+│  - All career chunks        │
+│  - Top 5 job chunks         │
+│  - Scoring criteria:        │
+│    • Skills (30%)           │
+│    • Experience (25%)       │
+│    • Industry (20%)         │
+│    • Leadership (25%)       │
+│                             │
+│  Returns: score, strengths, │
+│  gaps, evidence,            │
+│  recommendation             │
 └─────────────────────────────┘
 ```
 
-### 4.3 Why `get_all_chunks()` for Career RAG
+### 4.2 Why `get_all_chunks()` for Career RAG
 
 The career RAG uses `get_all_chunks()` (returns everything) instead of `query()` (semantic search) for matching because:
 
-1. **Complete picture:** The user's career is small enough (typically <100 chunks) that retrieving everything gives the LLM full context
-2. **No query bias:** A semantic query might miss relevant experience that doesn't match keywords
-3. **LLM does the filtering:** The LLM is better at determining relevance than vector similarity for nuanced career matching
+1. **Complete picture:** A senior IT leader's profile is typically <100 chunks — small enough for full context
+2. **No query bias:** Semantic search might miss relevant experience that doesn't match keywords
+3. **LLM does the filtering:** The LLM is better at determining relevance for nuanced career matching
 
 For **job RAG**, `query()` is used because job descriptions are larger and we want the most relevant sections.
 
@@ -308,126 +212,62 @@ For **job RAG**, `query()` is used because job descriptions are larger and we wa
 
 ### 5.1 JobMatcherAgent
 
-**Input:** `career_chunks` (list), `job_chunks` (list), `job_data` (dict)
-
-**Process:**
-```python
-# Join all career chunks into one context block
-career_context = "\n\n".join(
-    [chunk.get("content", str(chunk)) for chunk in career_chunks]
-)
-
-# Join all job chunks into one context block  
-job_context = "\n\n".join(
-    [chunk.get("content", str(chunk)) for chunk in job_chunks]
-)
-
-# Build prompt with both contexts
-prompt = f"""
-CANDIDATE CAREER PROFILE (retrieved context):
----
-{career_context}
----
-
-JOB REQUIREMENTS (retrieved context):
----
-{job_context}
----
-
-SCORING CRITERIA:
-1. Skills Match (30%)
-2. Experience Level Match (25%)
-3. Industry Relevance (20%)
-4. Leadership Signals (25%)
-
-CRITICAL RULES:
-- NEVER fabricate experience not in the chunks
+**Anti-hallucination rules:**
 - Only reference what appears in retrieved chunks
-"""
-```
+- Each strength/gap must cite specific evidence from chunks
+- Missing information is reported as a gap, not fabricated
+- Scores clamped to 0-100 by code (not trusted from LLM)
 
-**Output:** JSON with `match_score`, `strengths`, `gaps`, `evidence`, `explanation`, `recommendation`
+### 5.2 ResumeAgent (Materials Generation)
 
-**Anti-hallucination rule:** The prompt explicitly instructs the LLM to ONLY reference what appears in the retrieved chunks. If information is missing, it's noted as a gap.
+Takes career chunks + job chunks and generates:
+- Tailored resume (only from actual career data)
+- Cover letter (aligned to job requirements)
+- Uses Robert Half NZ template format
 
-### 5.2 ResumeAgent
+### 5.3 InsightAgent (Application Analytics)
 
-**Input:** Same as JobMatcherAgent
-
-**Process:** Retrieves career chunks and job chunks, builds a prompt asking the LLM to generate a tailored resume using only the provided career context, aligned with job requirements.
-
-**Key constraint:** Generated resume must only contain experience found in the retrieved career chunks.
-
-### 5.3 InsightAgent
-
-**Input:** `application_chunks` (from ApplicationRAG), `career_chunks` (from CareerRAG)
-
-**Process:** Analyzes application history patterns (rejection rates, success patterns, stage-specific failures) using the retrieved application history context.
-
-**Output:** Rejection patterns, success patterns, improvement suggestions, interview conversion rate.
+Takes application history chunks and identifies:
+- Rejection patterns (at which stage, for what reasons)
+- Success patterns (what types of roles convert)
+- Improvement suggestions based on data
 
 ---
 
-## 6. Data Flow Diagram
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                        USER ACTIONS                                  │
-├──────────────────────────────────────────────────────────────────────┤
-│  Upload Resume  │  Add Job  │  Track Application  │  Match/Generate  │
-└────────┬────────┴─────┬─────┴─────────┬───────────┴────────┬────────┘
-         │              │               │                    │
-         ▼              ▼               ▼                    ▼
-┌────────────────┐ ┌──────────┐ ┌──────────────┐ ┌────────────────────┐
-│ ResumeParser   │ │ JobParser│ │ DB INSERT    │ │ CareerRAG          │
-│ CareerExpander │ │          │ │              │ │ .get_all_chunks()  │
-└───────┬────────┘ └────┬─────┘ └──────────────┘ │                    │
-        │               │                        │ JobRAG             │
-        ▼               ▼                        │ .query(job_text)   │
-┌────────────────┐ ┌──────────┐                   │                    │
-│ CareerRAG      │ │ JobRAG   │                   └─────────┬──────────┘
-│ .ingest_       │ │ .ingest_ │                             │
-│  profile()     │ │  job()   │                             ▼
-└────────────────┘ └──────────┘                   ┌────────────────────┐
-                                                  │ Agent Layer        │
-┌────────────────────────────────────────┐        │ (LLM with retrieved│
-│ ApplicationRAG                         │        │  context as input) │
-│ .ingest_application()                  │        └─────────┬──────────┘
-│ .get_analytics_chunks()                │                  │
-└────────────────────────────────────────┘                  ▼
-                                                  ┌────────────────────┐
-                                                  │ Structured Output  │
-                                                  │ (JSON with scores, │
-                                                  │  strengths, gaps,  │
-                                                  │  evidence)         │
-                                                  └────────────────────┘
-```
-
----
-
-## 7. Key Design Decisions
+## 6. Key Design Decisions
 
 | Decision | Rationale |
 |----------|-----------|
-| **3 separate ChromaDB collections** | Prevents cross-contamination; each KB has different update patterns and query semantics |
+| **3 separate ChromaDB collections** | Prevents cross-contamination; each KB has different update patterns |
+| **Granular career ingestion** | Per-section embeddings enable precise retrieval for specific skills/experience |
 | **500-char chunk size** | Balance between context richness and retrieval precision |
 | **50-char overlap** | Prevents losing sentence context at chunk boundaries |
-| **`get_all_chunks()` for career** | User profile is small; full context gives LLM better matching capability |
-| **Semantic query for jobs** | Job descriptions are larger; need most relevant sections |
-| **`all-MiniLM-L6-v2` embeddings** | Fast, local, good semantic understanding, no API dependency |
-| **Metadata tagging per chunk** | Enables filtering (e.g., only project chunks, only rejected applications) |
+| **`get_all_chunks()` for career** | User profile is small; full context gives LLM better matching |
+| **`all-MiniLM-L6-v2` embeddings** | Fast, local, no API dependency, good semantic quality |
 | **New document per status update** | Accumulates history for pattern analysis over time |
-| **Lazy LLM initialization** | Avoids crashes at import time when API keys aren't configured |
+| **Lazy LLM initialization** | Avoids crashes at import time when providers aren't configured |
 
 ---
 
-## 8. Anti-Hallucination Safeguards
+## 7. Anti-Hallucination Safeguards
 
-1. **Prompt-level:** Every agent prompt includes explicit instructions to ONLY reference retrieved chunks
-2. **Evidence tracking:** JobMatcherAgent returns `evidence` field citing which chunks support each claim
-3. **Gap identification:** Missing information is reported as a gap, not fabricated
-4. **Score clamping:** LLM output scores are clamped to 0-100 to prevent hallucinated extreme values
-5. **Recommendation override:** Final recommendation is determined by code logic, not LLM output
+1. **Prompt-level:** Every agent prompt includes "ONLY reference retrieved chunks"
+2. **Evidence tracking:** Match results include `evidence` field citing specific chunks
+3. **Gap identification:** Missing info is reported as a gap, not fabricated
+4. **Score clamping:** LLM output scores are clamped to 0-100 by code logic
+5. **Recommendation override:** Final recommendation determined by code, not LLM
+
+---
+
+## 8. Performance Notes
+
+| Operation | Time | Notes |
+|-----------|------|-------|
+| Embedding generation | ~100ms per chunk | Local sentence-transformers |
+| Career RAG full retrieval | ~50ms | Returns all chunks (typically <100) |
+| Job RAG semantic query | ~100ms | Top-5 similarity search |
+| ChromaDB persistence | Automatic | Writes to disk on each ingest |
+| First load (cold start) | ~3s | sentence-transformers model load |
 
 ---
 
@@ -435,9 +275,8 @@ CRITICAL RULES:
 
 | Enhancement | Description |
 |-------------|-------------|
-| **Hybrid search** | Combine semantic search with BM25 keyword search for better retrieval |
-| **Re-ranking** | Use a cross-encoder model to re-rank retrieved chunks by relevance |
-| **Chunk summarization** | Pre-summarize long chunks before ingestion for better retrieval |
-| **Incremental ingestion** | Only re-embed changed sections when profile is updated |
-| **Query expansion** | Use LLM to expand user queries before retrieval |
-| **Multi-modal RAG** | Ingest PDF layouts, LinkedIn profiles, company reports |
+| **Hybrid search** | Combine semantic + BM25 keyword search |
+| **Re-ranking** | Cross-encoder re-ranking of retrieved chunks |
+| **Incremental ingestion** | Only re-embed changed sections on profile update |
+| **Query expansion** | LLM-expanded queries before retrieval |
+| **Multi-modal RAG** | Ingest PDF layouts, company reports |

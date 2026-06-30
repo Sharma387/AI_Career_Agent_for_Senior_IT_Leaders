@@ -2,226 +2,305 @@
 
 ## Overview
 
-When a user uploads a resume (PDF/DOCX/TXT), the system goes through a multi-stage pipeline to extract, understand, and store the information. Here's how it works:
+When a user uploads a resume (PDF/DOCX/TXT), the system goes through a multi-stage pipeline to extract, understand, and store the information. The pipeline supports multiple LLM backends and handles truncated/malformed model responses gracefully.
 
 ---
 
 ## The Flow (Step by Step)
 
 ```
-User uploads resume.pdf
+User uploads resume.pdf (+ selects model from dropdown)
         │
         ▼
-┌─────────────────────────────┐
-│  STAGE 1: File Extraction   │  (~1 second)
-│  app/ingestion/resume_parser.py
-│                             │
-│  PDF → pypdf → raw text     │
-│  DOCX → docx2txt → raw text│
-│  TXT → read directly        │
-└─────────────┬───────────────┘
-              │ raw_text (10,000+ chars)
+┌─────────────────────────────────────────┐
+│  STAGE 1: File Extraction + OCR         │  (~1-5s)
+│  app/ingestion/resume_parser.py         │
+│  app/ingestion/ocr_extractor.py         │
+│                                         │
+│  PDF → pypdf → raw text                 │
+│  DOCX → docx2txt → raw text            │
+│  TXT → read directly                    │
+│  IF text < 300 chars → OCR fallback     │
+└─────────────┬───────────────────────────┘
+              │ raw_text (any length, no truncation)
               ▼
 ┌─────────────────────────────────────────┐
-│  STAGE 2: AI Section Parser             │  (~2-3 minutes)
+│  STAGE 2: Chunked AI Parser             │  (~30-90s)
 │  app/ingestion/ai_resume_parser.py      │
 │                                         │
-│  Model: gemma4:e4b (via Ollama)         │
-│  Settings: temperature=0.1              │
-│            num_predict=8192             │
-│            num_ctx=16384                │
+│  1. Split into ~4000 char chunks        │
+│     (paragraph boundaries, never        │
+│      mid-paragraph)                     │
+│  2. Parse each chunk with selected      │
+│     model (Ollama/OpenAI/Anthropic)     │
+│  3. Robust JSON extraction handles:     │
+│     - ```json blocks                    │
+│     - <think> blocks                    │
+│     - Truncated responses (repair)      │
+│  4. Merge chunks (dedup by             │
+│     role+company, skill name)           │
+│  5. Output: v1.0 schema JSON            │
 │                                         │
-│  Input: Full raw text                   │
-│  Output: Structured JSON with:          │
-│    - full_name                          │
-│    - email, phone, location, linkedin   │
-│    - summary (professional paragraph)   │
-│    - experience[] (title, company,      │
-│      dates, location, bullets)          │
-│    - skills{} (categorized)             │
-│    - certifications[]                   │
-│    - interests[]                        │
-│    - education[]                        │
+│  Settings (Ollama):                     │
+│    temperature=0                        │
+│    num_predict=16000                    │
+│    num_ctx=32768                        │
 └─────────────┬───────────────────────────┘
-              │ parsed (structured dict)
+              │ v1.0 ParsedResume
               ▼
 ┌─────────────────────────────────────────┐
-│  STAGE 3: Career Expander (AI)          │  (~1-2 minutes)
+│  STAGE 3: Validation Layer              │  (~10ms)
+│  app/ingestion/profile_validator.py     │
+│                                         │
+│  Validates: email format, phone format, │
+│  LinkedIn URL, date consistency,        │
+│  duplicate skills, empty required fields│
+│  Returns: { is_valid, warnings, errors }│
+└─────────────┬───────────────────────────┘
+              │ Validated ParsedResume
+              ▼
+┌─────────────────────────────────────────┐
+│  STAGE 4: Career Expander               │  (~10-30s)
 │  app/ingestion/career_expander.py       │
 │                                         │
-│  Model: gemma4:e4b (same model)         │
+│  INPUT: Structured ParsedResume         │
+│  (NOT raw text — fewer tokens, faster)  │
+│  OUTPUT: Projects with STAR stories,    │
+│    skills_by_category, achievements     │
 │                                         │
-│  Input: Same raw text                   │
-│  Output: Enriched profile with:         │
-│    - Enhanced summary                   │
-│    - detailed_projects[] (with STAR     │
-│      stories, technologies, impact)     │
-│    - skills_by_category{}               │
-│    - key_achievements[]                 │
-│    - interview_stories[]                │
+│  FALLBACK: If no projects from expander,│
+│  creates project entries from work      │
+│  experience (preserves CV structure)    │
 └─────────────┬───────────────────────────┘
-              │ expanded (enriched dict)
+              │ ExpandedProfile
               ▼
 ┌─────────────────────────────────────────┐
-│  STAGE 4: Database Storage              │
+│  STAGE 5: Database Storage + Audit      │
 │  app/services/profile_service.py        │
 │                                         │
-│  Stores into these tables:              │
-│  ┌─────────────────────────────────┐    │
-│  │ career_profiles                  │    │
-│  │  - full_name (from AI parser)    │    │
-│  │  - email, phone, linkedin_url    │    │
-│  │  - summary (from AI parser)      │    │
-│  │  - raw_resume_text (original)    │    │
-│  │  - original_file_data (binary)   │    │
-│  │  - interests (from AI parser)    │    │
-│  │  - education (from AI parser)    │    │
-│  └─────────────────────────────────┘    │
-│  ┌─────────────────────────────────┐    │
-│  │ projects (from Career Expander)  │    │
-│  │  - title, description, role      │    │
-│  │  - technologies, impact          │    │
-│  │  - STAR stories                  │    │
-│  └─────────────────────────────────┘    │
-│  ┌─────────────────────────────────┐    │
-│  │ skills (from AI parser)          │    │
-│  │  - name, category                │    │
-│  └─────────────────────────────────┘    │
-│  ┌─────────────────────────────────┐    │
-│  │ certifications (from AI parser)  │    │
-│  │  - name, issuer                  │    │
-│  └─────────────────────────────────┘    │
+│  Stores:                                │
+│  • career_profiles (v1.0 schema JSON +  │
+│    flat fields for backward compat)     │
+│  • projects (from expander or fallback) │
+│  • skills (categorized)                 │
+│  • certifications                       │
+│  • resume_parse_runs (audit: model,     │
+│    time, status, chunks, validation)    │
+│  • formatted_resume_html (Robert Half)  │
 └─────────────┬───────────────────────────┘
               │
               ▼
 ┌─────────────────────────────────────────┐
-│  STAGE 5: RAG Ingestion                 │
+│  STAGE 6: Granular RAG Ingestion        │
 │  app/rag/career_rag.py                  │
 │                                         │
-│  Embeds the profile data into ChromaDB  │
-│  vector store for later retrieval       │
-│  during job matching                    │
+│  Separate embeddings for:               │
+│  - Each experience entry                │
+│  - Each project                         │
+│  - Each achievement                     │
+│  - Skills summary                       │
+│  - Certifications                       │
+│  Each with metadata: profile_id, type   │
 └─────────────────────────────────────────┘
 ```
 
 ---
 
-## What Each Stage Does
+## Model Selection
 
-### Stage 1: File Extraction
-**File:** `app/ingestion/resume_parser.py`
-**Time:** ~1 second
+Users choose their parsing model from a dropdown on the Resume page:
 
-Simply extracts raw text from the file. For PDFs with multi-column layouts, the text may come out interleaved (left column mixed with right column from different pages). This is a known limitation of PDF extraction.
+### Local Models (Ollama — free, private)
+| Model | Speed | Quality | Notes |
+|-------|-------|---------|-------|
+| `gemma4:e4b` | ~60s/chunk | High | Default. Best for multi-column PDFs |
+| `qwen3.5:latest` | ~30s/chunk | Good | Faster but sometimes wraps JSON in think blocks |
+| `llama3.1:8b` | ~20s/chunk | Moderate | Fastest local option |
 
-### Stage 2: AI Section Parser (NEW — replaces old regex parser)
-**File:** `app/ingestion/ai_resume_parser.py`
-**Time:** ~2-3 minutes
-**Model:** gemma4:e4b via Ollama
+### Cloud Models (requires API key)
+| Model | Speed | Quality | Cost |
+|-------|-------|---------|------|
+| `openai:gpt-4o` | ~5s/chunk | Excellent | ~$0.01/resume |
+| `openai:gpt-4o-mini` | ~3s/chunk | Very Good | ~$0.001/resume |
+| `anthropic:claude-sonnet-4-20250514` | ~5s/chunk | Excellent | ~$0.01/resume |
+| `anthropic:claude-3-haiku-20240307` | ~3s/chunk | Good | ~$0.001/resume |
 
-This is the KEY improvement. Previously, a regex-based parser tried to detect sections by matching keywords like "Certifications" or "Experience" — which failed badly on multi-column PDFs where text from different columns gets interleaved.
-
-Now, the FULL raw text is sent to the AI model with a structured prompt asking it to return JSON. The AI **understands context** — it knows "NTT Data" is a company name (experience), not a certification, regardless of where it appears in the text stream.
-
-**Prompt tells the model:**
-- Parse into specific sections (name, email, experience, skills, certifications, interests, education)
-- Handle interleaved multi-column text
-- Only extract what's actually there (no hallucination)
-- Return pure JSON
-
-**Settings:**
-- `temperature=0.1` — factual extraction, minimal creativity
-- `num_predict=8192` — allow long JSON response (your resume produces ~3000 chars of JSON)
-- `num_ctx=16384` — context window large enough for 10K char resume + prompt
-
-### Stage 3: Career Expander
-**File:** `app/ingestion/career_expander.py`
-**Time:** ~1-2 minutes
-**Model:** gemma4:e4b
-
-Takes the same raw text and produces an ENRICHED version:
-- Expands bullet points into fuller narratives
-- Creates STAR stories from achievements
-- Categorizes skills more granularly
-- Identifies key projects from experience descriptions
-
-This is used for the "projects" you see on the Resume page and for generating tailored materials later.
-
-### Stage 4: Database Storage
-**File:** `app/services/profile_service.py`
-
-Combines outputs from Stage 2 (AI Parser) and Stage 3 (Career Expander):
-- Contact info, summary, certifications, interests → from AI Parser (Stage 2)
-- Projects with STAR stories → from Career Expander (Stage 3)
-- Skills → from AI Parser (prefers its categorization)
-- Original file binary → stored for download
-
-### Stage 5: RAG Ingestion
-**File:** `app/rag/career_rag.py`
-
-Converts the profile data into vector embeddings stored in ChromaDB. These are used later when matching against job descriptions — the system retrieves relevant chunks of your career profile that are most similar to a job's requirements.
+The model list is loaded dynamically from Ollama's `/api/tags` endpoint on page load. Cloud models are always available as options.
 
 ---
 
-## Why AI Parsing Instead of Regex?
+## JSON Extraction (The Critical Piece)
 
-| Aspect | Old Regex Parser | New AI Parser |
-|--------|-----------------|---------------|
-| Multi-column PDFs | ❌ Fails (text interleaved) | ✅ Understands context |
-| "NTT Data" company | ❌ Might match "data" keyword | ✅ Knows it's a company |
-| Section detection | ❌ Needs exact headers | ✅ Infers from context |
-| Different resume formats | ❌ Breaks on non-standard | ✅ Adapts to any format |
-| Speed | Fast (< 1 second) | Slow (2-3 minutes) |
-| Accuracy | ~60% for complex resumes | ~95% |
+**File:** `app/agents/json_parser.py`
+
+Local models (especially gemma4) often wrap their output in markdown code blocks or produce truncated JSON. The extraction engine handles all these cases:
+
+### Strategy 1: Direct Parse
+Content is already clean JSON → `json.loads()` succeeds.
+
+### Strategy 2: Markdown Extraction
+Strips ` ```json ... ``` ` wrappers. Handles truncated responses where the closing ` ``` ` is missing.
+
+### Strategy 3: Brace Matching
+Finds first `{` and last `}` in the content, extracts between them.
+
+### Strategy 4: Truncated JSON Repair
+When the model hits `num_predict` limit and produces incomplete JSON:
+1. Tracks string boundaries (handles unclosed quotes)
+2. Truncates to last complete value
+3. Removes trailing incomplete key-value pairs
+4. Closes all open brackets/braces
+5. Progressively trims back if first attempt fails
+
+Also handles `<think>...</think>` blocks from reasoning models (qwen3.5).
+
+---
+
+## v1.0 Schema
+
+The full parsed resume is stored as JSON in `career_profiles.parsed_resume_v1`:
+
+```json
+{
+  "schema_version": "1.0",
+  "resume": {
+    "personal_info": {
+      "full_name": "", "preferred_name": null, "headline": "",
+      "email": "", "phone": "",
+      "location": {"city": "", "state": "", "country": ""},
+      "linkedin": "", "github": ""
+    },
+    "professional_summary": {
+      "summary_text": "", "years_experience": null,
+      "seniority_level": "", "industries": []
+    },
+    "core_skills": {
+      "technical_skills": [], "functional_skills": [],
+      "tools_platforms": [], "methodologies": [], "domains": []
+    },
+    "work_experience": [{
+      "company": "", "role_title": "", "employment_type": "full-time",
+      "location": "", "start_date": "", "end_date": "",
+      "responsibilities": [],
+      "achievements": [{"statement": "", "impact_metrics": {"type": "", "value": "", "unit": ""}}],
+      "tech_stack": []
+    }],
+    "projects": [{"project_name": "", "description": "", "role": "", "technologies": [], "outcomes": []}],
+    "education": [{"institution": "", "degree": "", "field_of_study": "", "end_year": ""}],
+    "certifications": [{"name": "", "issuing_body": ""}],
+    "languages": [{"language": "", "proficiency": ""}],
+    "ats_metadata": {"keywords": [], "completeness_score": 0, "last_updated": ""}
+  }
+}
+```
+
+---
+
+## Chunking Strategy
+
+**File:** `app/ingestion/ai_resume_parser.py` → `chunk_resume()`
+
+```python
+def chunk_resume(raw_text: str, max_chunk_size: int = 4000) -> list[str]:
+    """
+    Split resume into chunks at paragraph boundaries.
+    
+    Strategy:
+    1. Split by double newlines (paragraph boundaries)
+    2. Group paragraphs until 4000 chars reached
+    3. Never split mid-paragraph
+    4. Oversized paragraphs get truncated at max_chunk_size
+    """
+```
+
+For a typical 10K-char resume → 3 chunks → each parsed independently → merged with dedup.
+
+---
+
+## Merge Logic
+
+When merging chunks, the system prevents duplicates:
+- **Personal info:** First non-empty value wins
+- **Work experience:** Dedup by `(role_title.lower(), company.lower())`
+- **Skills:** Dedup by `skill_name.lower()` across all categories
+- **Certifications:** Dedup by `name.lower()`
+- **Education:** Dedup by `(degree.lower(), institution.lower())`
+
+Experience is sorted by end_date descending (current roles first).
+
+---
+
+## Parse Audit Trail
+
+Every parse is recorded in `resume_parse_runs`:
+
+| Column | Purpose |
+|--------|---------|
+| `model_name` | Which model was used (e.g., "gemma4:e4b") |
+| `prompt_version` | Parser version (currently "v2_chunked") |
+| `processing_time_seconds` | Total wall-clock time |
+| `parse_status` | "success", "partial", or "failed" |
+| `validation_status` | "valid", "warnings", or "errors" |
+| `validation_details` | Full validation output (JSON) |
+| `chunks_processed` | Number of chunks the resume was split into |
+
+---
+
+## What Gets Stored Where
+
+| Data | Source | DB Location |
+|------|--------|-------------|
+| Name, email, phone, linkedin | AI Parser (v1.0) | career_profiles flat columns |
+| Full v1.0 schema JSON | AI Parser | career_profiles.parsed_resume_v1 |
+| Professional summary | AI Parser | career_profiles.summary |
+| Original file (PDF/DOCX binary) | Direct upload | career_profiles.original_file_data |
+| Extracted raw text | pypdf/docx2txt | career_profiles.raw_resume_text |
+| Skills (categorized) | AI Parser | skills table |
+| Certifications | AI Parser | certifications table |
+| Education | AI Parser | career_profiles.education (JSON) |
+| Projects (with STAR) | Career Expander / Fallback | projects table |
+| Formatted HTML resume | Template rendering | career_profiles.formatted_resume_html |
+| Headline, years_exp, seniority | AI Parser (v1.0) | career_profiles columns |
+| Languages, preferences, ATS | AI Parser (v1.0) | career_profiles JSON columns |
 
 ---
 
 ## Configuration
 
 In `.env`:
-```
-OLLAMA_MODEL=gemma4:e4b     # The model used for all AI tasks
+```bash
+OLLAMA_MODEL=gemma4:e4b          # Default parsing model
+OLLAMA_HQ_MODEL=gemma4:e4b       # Optional high-quality model for rewrites
 OLLAMA_BASE_URL=http://localhost:11434
+LLM_PROVIDER=ollama              # Used for job matching, materials generation
 ```
 
-The AI parser uses these Ollama settings (in `ai_resume_parser.py`):
+Parser settings (hardcoded in `ai_resume_parser.py`):
 ```python
-num_predict=8192   # Max response tokens (for full JSON output)
-num_ctx=16384      # Context window (input + output together)
-temperature=0.1    # Low creativity, high accuracy
+temperature=0       # Deterministic extraction
+num_predict=16000   # Generous token limit to avoid truncation
+num_ctx=32768       # Large context window for resume + prompt + response
 ```
 
 ---
 
-## What Gets Stored Where
+## Troubleshooting
 
-| Data | Source | DB Table/Column |
-|------|--------|-----------------|
-| Name, email, phone, location, linkedin | AI Parser | career_profiles |
-| Professional summary | AI Parser | career_profiles.summary |
-| Original file (PDF/DOCX binary) | Direct upload | career_profiles.original_file_data |
-| Extracted raw text | pypdf/docx2txt | career_profiles.raw_resume_text |
-| Skills (categorized) | AI Parser | skills table |
-| Certifications | AI Parser | certifications table |
-| Interests | AI Parser | career_profiles.interests (JSON) |
-| Education | AI Parser | career_profiles.education (JSON) |
-| Projects (with STAR) | Career Expander | projects table |
-| Formatted HTML resume | Template rendering | career_profiles.formatted_resume_html |
+### "Failed to extract JSON from LLM response"
+- Check `/tmp/chunk_*_response.txt` for the raw model output
+- Usually means the model hit its token limit — try a cloud model or increase `num_predict`
+- The repair engine now handles most truncated responses automatically
 
----
+### Parsing takes > 3 minutes
+- gemma4:e4b on Apple Silicon M1/M2 takes ~60s per chunk
+- A 3-chunk resume = ~3 minutes total
+- For faster parsing: use `openai:gpt-4o-mini` (3-5 seconds total)
 
-## Known Limitations
+### Skills from wrong sections appearing
+- The prompt instructs "Skills ONLY from skills sections"
+- If this still happens with your model, try a different model or manually edit after upload
 
-1. **Speed:** Upload takes 3-5 minutes total (AI processing). The UI shows "Processing with AI..." during this time.
-2. **Model dependency:** Requires Ollama running with gemma4:e4b loaded. First call may be slower as model loads into RAM.
-3. **Very long resumes:** Resumes over 8000 characters are truncated before sending to AI (last 2000+ chars may be lost).
-4. **PDF extraction quality:** For heavily formatted PDFs with tables/graphics, pypdf may not extract text perfectly. The AI then works with imperfect input.
-
----
-
-## If You Want to Change Anything
-
-- **Switch models:** Change `OLLAMA_MODEL` in `.env` (e.g., `llama3.1:70b` for better quality but slower)
-- **Faster but less accurate:** Reduce `num_predict` or switch to a smaller model
-- **Better extraction for complex PDFs:** Could add OCR (Tesseract) or use a PDF-to-text service
-- **Skip AI parsing:** If you want instant upload with manual section editing, the Career Expander alone provides projects/skills
+### Empty projects after upload
+- The Career Expander may not produce projects if the parsed data is minimal
+- Fallback creates project entries from work_experience automatically
+- You can always add projects manually via the UI

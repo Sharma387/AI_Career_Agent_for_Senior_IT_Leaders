@@ -5,34 +5,37 @@ An AI-powered career intelligence platform that helps senior IT professionals (P
 ## Features
 
 - **Multi-Source Job Search** — Adzuna API (NZ/AU jobs), Seek automation (Playwright), LinkedIn browser extension
+- **AI Resume Parsing** — Multi-model support (local Ollama + cloud OpenAI/Anthropic) with chunked extraction, truncation repair, and v1.0 schema
 - **AI Job Matching** — RAG-based scoring with skills, experience, industry, and leadership dimensions
-- **Resume & Cover Letter Generation** — LLM-generated materials tailored per job
+- **Resume & Cover Letter Generation** — LLM-generated materials tailored per job (Robert Half NZ template)
 - **Interview Strategy** — AI-prepared talking points, potential questions, and gap analysis
 - **Application Tracking** — Status management, insights, and analytics
 - **Smart Deduplication** — URL + title/company matching prevents duplicate entries
 - **API Usage Management** — Daily dedup, monthly quota tracking, automatic fallback to free APIs
 - **Scheduled Scraping** — Daily automated Seek searches with configurable role presets
+- **Dark Premium UI** — shadcn/ui + Tailwind with dark navy theme, score rings, and Framer Motion animations
+- **Model Selection** — Choose parsing model per upload (local Ollama models or cloud APIs with key input)
 
 ## Architecture
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│             React Frontend (TypeScript + shadcn/ui + Tailwind)          │
-│  Dashboard │ Jobs │ Applications │ Profile │ Insights │ Interview Prep │
+│        React Frontend (TypeScript + shadcn/ui + Tailwind + Vite)        │
+│  Discover │ My Jobs │ Applications │ Resume │ Insights │ Interview     │
 └──────────────────────────────────┬─────────────────────────────────────┘
-                                   │ REST API
+                                   │ REST API (proxy via Vite → :8000)
 ┌──────────────────────────────────▼─────────────────────────────────────┐
-│                         FastAPI Backend                                 │
+│                         FastAPI Backend (async)                         │
 │  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐  ┌───────────┐  │
 │  │ API Routes  │  │ Job Ingestion│  │  LLM Agents  │  │ Scheduler │  │
 │  └──────┬──────┘  └──────┬───────┘  └──────┬───────┘  └─────┬─────┘  │
 │         │                │                  │                │        │
 │  ┌──────▼──────────────▼──────────────────▼────────────────▼──────┐  │
-│  │              Service Layer (Profile, Job, Tracking)              │  │
+│  │              Service Layer (Profile, Job, Tracking, Document)    │  │
 │  └──────┬─────────────────────────────────────────────────┬───────┘  │
 │         │                                                 │          │
 │  ┌──────▼───────────┐  ┌─────────────────────────────────▼───────┐  │
-│  │ SQLite (aiosqlite)│  │ ChromaDB (RAG Embeddings)               │  │
+│  │ SQLite (aiosqlite)│  │ ChromaDB (Granular RAG Embeddings)      │  │
 │  └───────────────────┘  └────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────────────────┘
 
@@ -47,25 +50,27 @@ Job Sources:
 
 | Layer           | Technology                                                    |
 |-----------------|---------------------------------------------------------------|
-| Frontend        | React 18, TypeScript, Vite, shadcn/ui, Tailwind CSS, Lucide  |
+| Frontend        | React 18, TypeScript, Vite, shadcn/ui, Tailwind CSS, Lucide, Framer Motion |
 | Backend         | Python 3.11+, FastAPI, Pydantic v2, SQLAlchemy (async)        |
-| LLM             | Ollama (llama3.1:8b local, free) or Anthropic/NVIDIA          |
+| LLM (default)   | Ollama (gemma4:e4b local, free)                              |
+| LLM (optional)  | OpenAI (GPT-4o), Anthropic (Claude Sonnet 4), NVIDIA NIM     |
 | Embeddings      | sentence-transformers (all-MiniLM-L6-v2)                      |
-| Vector Store    | ChromaDB                                                      |
+| Vector Store    | ChromaDB (granular per-section embeddings)                    |
 | Database        | SQLite (via aiosqlite)                                        |
 | Job APIs        | Adzuna, Jobicy, Arbeitnow                                     |
 | Browser Automation | Playwright (Seek), Chrome Extension (LinkedIn)             |
 | Scheduler       | APScheduler (async)                                           |
-| Auth            | JWT (python-jose) + bcrypt                                    |
+| Auth            | JWT (python-jose) + bcrypt/passlib                            |
+| Resume Templates | Robert Half NZ IT format (HTML + DOCX)                      |
 
 ## Quick Start
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.11+ (tested with 3.14)
 - Node.js 18+
 - Ollama installed and running (`ollama serve`)
-- llama3.1:8b model pulled (`ollama pull llama3.1:8b`)
+- gemma4:e4b model pulled (`ollama pull gemma4:e4b`)
 
 ### 1. Clone & Setup Backend
 
@@ -86,6 +91,7 @@ cp .env.example .env
 # - ADZUNA_APP_ID and ADZUNA_APP_KEY (free: https://developer.adzuna.com/signup)
 # - JWT_SECRET_KEY (any random string)
 # - LLM_PROVIDER=ollama (default)
+# - OLLAMA_MODEL=gemma4:e4b (default parser model)
 ```
 
 ### 3. Setup Frontend
@@ -131,7 +137,9 @@ playwright install chromium
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `LLM_PROVIDER` | LLM backend: `ollama`, `nvidia`, or `anthropic` | `ollama` |
-| `OLLAMA_MODEL` | Ollama model name | `llama3.1:8b` |
+| `OLLAMA_MODEL` | Default Ollama model for parsing | `gemma4:e4b` |
+| `OLLAMA_HQ_MODEL` | High-quality model for rewrites (optional) | `gemma4:e4b` |
+| `OLLAMA_BASE_URL` | Ollama server URL | `http://localhost:11434` |
 | `ADZUNA_APP_ID` | Adzuna API app ID (free tier) | — |
 | `ADZUNA_APP_KEY` | Adzuna API key | — |
 | `ADZUNA_COUNTRY` | Job search country code | `nz` |
@@ -143,6 +151,22 @@ playwright install chromium
 
 See `.env.example` for the full list.
 
+## Resume Parsing Pipeline
+
+The system uses a multi-stage AI pipeline for resume parsing:
+
+1. **Text Extraction** — pypdf/docx2txt with OCR fallback (Tesseract)
+2. **Chunked AI Parsing** — Resume split into ~4000 char chunks, each parsed independently
+3. **Robust JSON Extraction** — Handles markdown blocks, truncated responses, think-blocks
+4. **Chunk Merging** — Deduplicates experience, skills, certifications across chunks
+5. **Validation** — Email, phone, date format, completeness checks
+6. **Career Expansion** — LLM expands parsed data into STAR stories and projects
+7. **Granular RAG Ingestion** — Per-section embeddings for precise retrieval
+
+**Model Selection:** Users can choose per-upload:
+- Local: Any Ollama model (gemma4:e4b, qwen3.5, llama3.1, etc.)
+- Cloud: OpenAI GPT-4o/Mini, Anthropic Claude Sonnet 4/Haiku (requires API key)
+
 ## Job Search Features
 
 ### Adzuna (Primary)
@@ -150,6 +174,7 @@ See `.env.example` for the full list.
 - Covers NZ, AU, UK, US job markets
 - Aggregates from Seek, Trade Me Jobs, and more
 - Role presets: PM, Sr PM, IT Manager, Engineering Manager, IT Director, CTO
+- Returns snippets only — user pastes full JDs for matching
 
 ### LinkedIn Extension
 - Chrome Manifest V3 extension
@@ -170,13 +195,6 @@ See `.env.example` for the full list.
 - Arbeitnow (European tech jobs)
 - Automatically activated when Adzuna quota is exhausted
 
-## API Usage Tracking
-
-- Each unique search per day counts as 1 API call
-- Same search on the same day won't hit the API again
-- Monthly usage displayed in the UI (e.g., "API: 248/250 remaining")
-- When quota is exhausted, fallback providers are used automatically
-
 ## Testing
 
 ```bash
@@ -184,23 +202,24 @@ source .venv/bin/activate
 python -m pytest tests/ -v
 ```
 
-Currently 78 tests covering: API routes, database models, job parser, job scraper, LLM factory, resume parser, agents, deduplication, and LinkedIn ingest endpoint.
+Currently **86 tests** covering: API routes, database models, job parser, job scraper, LLM factory, resume parser, agents, deduplication, bug fixes, and LinkedIn ingest endpoint.
 
 ## Project Structure
 
 ```
 ├── app/
-│   ├── agents/          # LLM-powered agents (matcher, resume, insight)
-│   ├── api/             # FastAPI routes + auth
+│   ├── agents/          # LLM-powered agents (matcher, resume, insight, json_parser)
+│   ├── api/             # FastAPI routes + JWT auth
 │   ├── core/            # Config, LLM factory, scheduler, rate limiting
-│   ├── db/              # SQLAlchemy models + async session
-│   ├── ingestion/       # Job parsers, scrapers, adapters (Adzuna, Seek, LinkedIn)
+│   ├── db/              # SQLAlchemy models + async session (v1.0 schema)
+│   ├── ingestion/       # AI resume parser, job parsers, scrapers, adapters
 │   ├── rag/             # ChromaDB vector stores (career, job, application)
 │   ├── services/        # Business logic (profile, job, tracking, document)
-│   └── templates/       # HTML/DOCX templates for resume/cover letter
+│   └── templates/       # HTML/DOCX templates (Robert Half NZ format)
 ├── extension/           # LinkedIn Chrome extension (Manifest V3)
 ├── frontend-react/      # React frontend (Vite + shadcn/ui + Tailwind)
-├── tests/               # pytest test suite
+├── tests/               # pytest test suite (86 tests)
+├── docs/                # Architecture docs, user manual
 ├── .env.example         # Environment variable template
 ├── requirements.txt     # Python dependencies
 └── pyproject.toml       # Pytest + Ruff configuration
@@ -210,42 +229,40 @@ Currently 78 tests covering: API routes, database models, job parser, job scrape
 
 ### "Address already in use" (port 8000)
 
-A previous server instance is still running. Kill it first:
-
 ```bash
 lsof -ti:8000 | xargs kill -9
 uvicorn app.main:app --reload
 ```
 
-Or use a different port:
-
-```bash
-uvicorn app.main:app --reload --port 8001
-```
-
 ### Frontend "npm run dev" fails with package.json not found
 
 You need to be in the `frontend-react` folder:
-
 ```bash
 cd frontend-react
 npm run dev
 ```
 
-### PDF resume upload fails
+### "No module named 'fastapi'" on backend start
 
-- Ensure Ollama is running: `ollama serve`
-- Ensure the model is pulled: `ollama pull llama3.1:8b`
-- If Ollama is slow on first call (loading model), wait 30 seconds and try again
-- The upload will still succeed even if the LLM is unavailable (basic profile created)
-
-### "Module not found" errors on backend start
-
-Make sure you're using the correct virtual environment:
-
+You forgot to activate the virtual environment:
 ```bash
 source .venv/bin/activate    # Note: .venv (with dot), not venv
 uvicorn app.main:app --reload
+```
+
+### PDF resume upload takes too long or fails
+
+- Ensure Ollama is running: `ollama serve`
+- Ensure the model is pulled: `ollama pull gemma4:e4b`
+- The system uses `num_predict=16000` and `num_ctx=32768` — first call loads model into RAM (~30s)
+- If JSON extraction fails, check `/tmp/chunk_*_response.txt` for raw model output
+- Try a cloud model (OpenAI GPT-4o) for faster, more reliable parsing
+
+### Reset database (fresh start)
+
+```bash
+rm -f app/data/career_agent.db
+# Restart backend — tables recreated automatically
 ```
 
 ## License

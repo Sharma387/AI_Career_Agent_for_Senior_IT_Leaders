@@ -34,6 +34,48 @@ from app.ingestion.deduplication import is_duplicate
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+
+@router.get("/api/models/available")
+async def get_available_models():
+    """Return available local and cloud models for resume parsing."""
+    models = {
+        "local": [],
+        "cloud": [
+            {"id": "openai:gpt-4o", "name": "GPT-4o (OpenAI)", "provider": "openai", "requires_key": True},
+            {"id": "openai:gpt-4o-mini", "name": "GPT-4o Mini (OpenAI)", "provider": "openai", "requires_key": True},
+            {"id": "anthropic:claude-sonnet-4-20250514", "name": "Claude Sonnet 4 (Anthropic)", "provider": "anthropic", "requires_key": True},
+            {"id": "anthropic:claude-3-haiku-20240307", "name": "Claude Haiku (Anthropic)", "provider": "anthropic", "requires_key": True},
+        ],
+        "default": settings.OLLAMA_MODEL,
+    }
+
+    # Fetch local Ollama models
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags")
+            if resp.status_code == 200:
+                data = resp.json()
+                for m in data.get("models", []):
+                    models["local"].append({
+                        "id": f"ollama:{m['name']}",
+                        "name": m["name"],
+                        "size_gb": round(m.get("size", 0) / 1e9, 1),
+                        "provider": "ollama",
+                        "requires_key": False,
+                    })
+    except Exception:
+        # Ollama not reachable — add default model as fallback
+        models["local"].append({
+            "id": f"ollama:{settings.OLLAMA_MODEL}",
+            "name": settings.OLLAMA_MODEL,
+            "size_gb": 0,
+            "provider": "ollama",
+            "requires_key": False,
+        })
+
+    return models
+
 # Rate limiting for LinkedIn ingest endpoint: max 10 requests per minute per user
 _linkedin_ingest_rate: dict[int, list[float]] = defaultdict(list)
 
@@ -78,6 +120,8 @@ class UpdateResumeRequest(BaseModel):
 @router.post("/api/profile/upload-resume")
 async def upload_resume(
     file: UploadFile = File(...),
+    model: str = Query(default=None, description="Model to use for parsing (e.g. ollama:qwen3.5:latest, openai:gpt-4o)"),
+    api_key: str = Query(default=None, description="API key for cloud models"),
     db_session: AsyncSession = Depends(get_db),
     user: User | None = Depends(get_current_user),
 ):
@@ -110,6 +154,8 @@ async def upload_resume(
             user_id=user.id if user else None,
             original_file_data=content,
             original_file_name=file.filename or f"resume{suffix}",
+            parse_model=model,
+            parse_api_key=api_key,
         )
         return result
     finally:

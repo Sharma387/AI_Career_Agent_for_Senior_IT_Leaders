@@ -86,10 +86,18 @@ export const api = {
     getMyProfile() {
       return client.get<{ profile: CareerProfile | null }>('/api/profile/me');
     },
-    uploadResume(file: File) {
+    getAvailableModels() {
+      return client.get<{local: any[], cloud: any[], default: string}>('/api/models/available');
+    },
+    uploadResume(file: File, model?: string, apiKey?: string) {
       const formData = new FormData();
       formData.append('file', file);
-      return client.post<CareerProfile>('/api/profile/upload-resume', formData, {
+      let url = '/api/profile/upload-resume';
+      const params = new URLSearchParams();
+      if (model) params.append('model', model);
+      if (apiKey) params.append('api_key', apiKey);
+      if (params.toString()) url += '?' + params.toString();
+      return client.post<CareerProfile>(url, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
     },

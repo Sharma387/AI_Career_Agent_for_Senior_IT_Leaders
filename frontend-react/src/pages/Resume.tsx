@@ -76,6 +76,12 @@ export function Resume() {
   const [editingInterests, setEditingInterests] = useState(false);
   const [interestsText, setInterestsText] = useState('');
 
+  // Model selection state
+  const [availableModels, setAvailableModels] = useState<{local: any[], cloud: any[], default: string}>({local: [], cloud: [], default: ''});
+  const [selectedModel, setSelectedModel] = useState('');
+  const [cloudApiKey, setCloudApiKey] = useState('');
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+
   const loadProfile = async (id: number) => {
     try {
       const res = await api.profile.get(id);
@@ -113,6 +119,14 @@ export function Resume() {
     }
   }, [authProfileId]);
 
+  // Fetch available models on mount
+  useEffect(() => {
+    api.profile.getAvailableModels().then(res => {
+      setAvailableModels(res.data);
+      setSelectedModel(`ollama:${res.data.default}`);
+    }).catch(() => null);
+  }, []);
+
   const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -121,7 +135,7 @@ export function Resume() {
     // Short delay to show upload phase before switching to processing
     setTimeout(() => setUploadStatus('processing'), 500);
     try {
-      const res = await api.profile.uploadResume(file);
+      const res = await api.profile.uploadResume(file, selectedModel, cloudApiKey || undefined);
       const newProfileId = res.data.profile_id ?? res.data.id;
       if (!newProfileId) throw new Error('No profile ID returned');
       
@@ -315,7 +329,47 @@ export function Resume() {
         ) : (
           <p className="text-slate-500 text-sm mb-4">No resume uploaded yet. Upload your base resume to get started.</p>
         )}
-        <div className="flex gap-2 mt-4">
+
+        {/* Model Selection */}
+        <div className="card mb-4 mt-4">
+          <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-3">Parsing Model</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <select
+                value={selectedModel}
+                onChange={(e) => {
+                  setSelectedModel(e.target.value);
+                  setShowApiKeyInput(e.target.value.startsWith('openai:') || e.target.value.startsWith('anthropic:'));
+                }}
+                className="input-field w-full"
+              >
+                <optgroup label="Local Models (Ollama)">
+                  {availableModels.local.map(m => (
+                    <option key={m.id} value={m.id}>{m.name} {m.size_gb ? `(${m.size_gb}GB)` : ''}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Cloud Models">
+                  {availableModels.cloud.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+            {showApiKeyInput && (
+              <div>
+                <input
+                  type="password"
+                  value={cloudApiKey}
+                  onChange={(e) => setCloudApiKey(e.target.value)}
+                  className="input-field w-full"
+                  placeholder="Enter API Key"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-2">
           <label className="btn-gold inline-flex cursor-pointer">
             <Upload className="w-4 h-4 mr-1" />
             {uploadStatus === 'uploading' ? 'Uploading...' : uploadStatus === 'processing' ? 'Processing...' : profile ? 'Replace Resume' : 'Upload Resume'}

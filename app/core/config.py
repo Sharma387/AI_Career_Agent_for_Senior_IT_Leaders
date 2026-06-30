@@ -38,8 +38,12 @@ class Settings(BaseSettings):
         description="Ollama server URL",
     )
     OLLAMA_MODEL: str = Field(
-        default="llama3.1:8b",
-        description="Ollama model name",
+        default="qwen3.5:latest",
+        description="Ollama model name (fast parser)",
+    )
+    OLLAMA_HQ_MODEL: str = Field(
+        default="gemma4:e4b",
+        description="Ollama high-quality model for rewrites/expansion (optional)",
     )
 
     LLM_PROVIDER: str = Field(
