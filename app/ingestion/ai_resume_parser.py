@@ -19,8 +19,13 @@ from app.agents.json_parser import extract_json_from_llm
 
 logger = logging.getLogger(__name__)
 
-# ─── PASS 1 PROMPT: Fast extraction (qwen3.5) ─────────────────────────────────
+# ─── PASS 1 PROMPT: Fast extraction ──────────────────────────────────────────
 EXTRACT_PROMPT = """You are a resume data extractor. Output ONLY raw JSON — no markdown, no code blocks, no explanation.
+
+IMPORTANT: The resume text may contain a "--- RIGHT COLUMN ---" marker. This means the resume has a two-column layout:
+- Content BEFORE the marker = left column (usually projects, work experience, career history)
+- Content AFTER the marker = right column (usually skills, certifications, education, interests, personal details)
+Treat both columns as part of the same resume. Extract ALL sections from BOTH columns.
 
 Schema:
 {"schema_version":"1.0","resume":{"personal_info":{"full_name":"","preferred_name":null,"headline":"","email":"","phone":"","location":{"city":"","state":"","country":""},"linkedin":"","github":""},"professional_summary":{"summary_text":"","years_experience":null,"seniority_level":"","industries":[]},"core_skills":{"technical_skills":[],"functional_skills":[],"tools_platforms":[],"methodologies":[],"domains":[]},"work_experience":[{"company":"","role_title":"","employment_type":"full-time","location":"","start_date":"","end_date":"","responsibilities":[],"achievements":[{"statement":"","impact_metrics":{"type":"","value":"","unit":""}}],"tech_stack":[]}],"projects":[{"project_name":"","description":"","role":"","technologies":[],"outcomes":[]}],"education":[{"institution":"","degree":"","field_of_study":"","end_year":""}],"certifications":[{"name":"","issuing_body":""}],"languages":[{"language":"","proficiency":""}],"ats_metadata":{"keywords":[]}}}
@@ -29,9 +34,11 @@ Rules:
 - Output ONLY the JSON object starting with { and ending with }
 - Do NOT wrap in ```json blocks
 - Do NOT add any text before or after the JSON
-- Extract ONLY explicit data from the text
+- Extract ALL data from BOTH columns (before AND after the --- RIGHT COLUMN --- marker)
+- Skills found in the right column go into core_skills (categorize: technical_skills, functional_skills, tools_platforms, methodologies, domains)
+- Certifications in the right column go into certifications[]
+- Interests/hobbies in the right column: ignore (not in schema)
 - Use null/empty for missing fields
-- Skills ONLY from skills sections
 - /no_think"""
 
 

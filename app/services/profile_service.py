@@ -210,26 +210,51 @@ class ProfileService:
 
         await db_session.flush()
 
-        skills_dict = {}
-        for category, skills_list in expanded.get("skills_by_category", {}).items():
-            skills_dict[category] = skills_list
+        # Build skills dict for HTML: prefer v1.0 categorised skills, fall back to expander
+        v1_skills = v1_resume.get("core_skills", {})
+        # Map v1.0 keys to readable display names for the template
+        skills_for_html = {}
+        category_map = {
+            "technical_skills": "Technical Skills",
+            "tools_platforms": "Tools & Platforms",
+            "functional_skills": "Functional / Management Skills",
+            "methodologies": "Methodologies & Frameworks",
+            "domains": "Industry Domains",
+        }
+        for key, label in category_map.items():
+            items = v1_skills.get(key, [])
+            if items:
+                skills_for_html[label] = items
+
+        # Fall back to expander skills if v1.0 has nothing
+        if not skills_for_html:
+            for category, skills_list in expanded.get("skills_by_category", {}).items():
+                if skills_list:
+                    skills_for_html[category] = skills_list
 
         nz_profile_data = {
             "full_name": name,
             "email": email or "",
-            "summary": expanded.get("summary", ""),
+            "phone": profile.phone or "",
+            "location": ", ".join(p for p in [
+                v1_resume.get("personal_info", {}).get("location", {}).get("city", ""),
+                v1_resume.get("personal_info", {}).get("location", {}).get("country", ""),
+            ] if p),
+            "linkedin": v1_resume.get("personal_info", {}).get("linkedin", "") or "",
+            "headline": v1_resume.get("personal_info", {}).get("headline", "") or "",
+            "summary": expanded.get("summary", "") or parsed.get("summary", ""),
             "resume_text": raw_text,
             "projects": [
                 {
                     "title": p.get("title", ""),
                     "description": p.get("description", ""),
                     "role": p.get("role", ""),
-                    "technologies": ", ".join(p.get("technologies", [])),
+                    "technologies": ", ".join(p.get("technologies", [])) if isinstance(p.get("technologies"), list) else str(p.get("technologies", "")),
                     "impact": p.get("impact", ""),
                 }
                 for p in expanded.get("detailed_projects", [])
             ],
-            "skills": skills_dict,
+            "skills": skills_for_html,
             "certifications": [
                 {"name": c.name, "issuer": c.issuer or ""}
                 for c in (await db_session.execute(

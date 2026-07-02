@@ -78,14 +78,47 @@
   }
 
   /* --- Key Skills --- */
+  .skills-categories {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 30px;
+  }
+
+  .skill-category {
+    break-inside: avoid;
+  }
+
+  .skill-category-title {
+    font-size: 10pt;
+    font-weight: 700;
+    color: #1a5276;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid #e8e8e8;
+    padding-bottom: 2px;
+  }
+
   .skills-list {
+    list-style: disc;
+    padding-left: 16px;
+  }
+
+  .skills-list li {
+    font-size: 10.5pt;
+    margin-bottom: 2px;
+    break-inside: avoid;
+  }
+
+  /* Flat skills (no categories) */
+  .skills-flat {
     list-style: disc;
     padding-left: 20px;
     columns: 2;
     column-gap: 30px;
   }
 
-  .skills-list li {
+  .skills-flat li {
     font-size: 10.5pt;
     margin-bottom: 3px;
     break-inside: avoid;
@@ -235,23 +268,70 @@
   {% if skills %}
   <div class="section">
     <div class="section-title">Key Skills</div>
-    <ul class="skills-list">
-      {% if skills is mapping %}
-        {% for category, skill_list in skills.items() %}
-          {% if skill_list is iterable and skill_list is not string %}
-            {% for skill in skill_list %}
-            <li>{{ skill }}</li>
-            {% endfor %}
+    {% if skills is mapping %}
+      {# Check if there are multiple meaningful categories #}
+      {% set categories = skills.keys() | list %}
+      {% if categories | length > 1 or (categories | length == 1 and categories[0] not in ['General', 'general', '']) %}
+        {# Render as categorised grid #}
+        {# Define display names for known category keys #}
+        {% set cat_labels = {
+          'technical': 'Technical Skills',
+          'technical_skills': 'Technical Skills',
+          'tools': 'Tools & Platforms',
+          'tools_platforms': 'Tools & Platforms',
+          'soft': 'Interpersonal & Soft Skills',
+          'functional_skills': 'Functional / Management Skills',
+          'functional': 'Functional / Management Skills',
+          'methodologies': 'Methodologies & Frameworks',
+          'domains': 'Industry Domains',
+          'leadership': 'Leadership Skills',
+          'management': 'Management Skills',
+          'General': 'General Skills'
+        } %}
+        <div class="skills-categories">
+          {% for category, skill_list in skills.items() %}
+            {% if skill_list %}
+              <div class="skill-category">
+                <div class="skill-category-title">
+                  {{ cat_labels.get(category, category | replace('_', ' ') | title) }}
+                </div>
+                <ul class="skills-list">
+                  {% if skill_list is iterable and skill_list is not string %}
+                    {% for skill in skill_list %}
+                      {% if skill %}<li>{{ skill }}</li>{% endif %}
+                    {% endfor %}
+                  {% else %}
+                    <li>{{ skill_list }}</li>
+                  {% endif %}
+                </ul>
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% else %}
+        {# Single unnamed category — render flat two-column list #}
+        <ul class="skills-flat">
+          {% for category, skill_list in skills.items() %}
+            {% if skill_list is iterable and skill_list is not string %}
+              {% for skill in skill_list %}{% if skill %}<li>{{ skill }}</li>{% endif %}{% endfor %}
+            {% else %}
+              <li>{{ skill_list }}</li>
+            {% endif %}
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% else %}
+      {# skills is a plain list #}
+      <ul class="skills-flat">
+        {% for skill in skills %}
+          {% if skill is mapping %}
+            <li>{{ skill.name }}</li>
           {% else %}
-            <li>{{ skill_list }}</li>
+            <li>{{ skill }}</li>
           {% endif %}
         {% endfor %}
-      {% else %}
-        {% for skill in skills %}
-        <li>{{ skill }}</li>
-        {% endfor %}
-      {% endif %}
-    </ul>
+      </ul>
+    {% endif %}
   </div>
   {% endif %}
 
