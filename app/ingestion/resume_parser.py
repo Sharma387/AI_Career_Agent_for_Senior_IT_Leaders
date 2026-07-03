@@ -10,27 +10,102 @@ from app.ingestion.ocr_extractor import extract_text_with_ocr
 logger = logging.getLogger(__name__)
 
 
+def _find_column_split(words: list, page_width: float) -> float | None:
+    """
+    Find the x-coordinate of the gap between two columns by analysing
+    the distribution of word start positions (x0).
+
+    Returns the split x-coordinate if a clear 2-column gap is found,
+    otherwise returns None (single column).
+    """
+    if not words:
+        return None
+
+    # Collect all right-edges (x1) and left-edges (x0)
+    x1_vals = sorted(set(round(w["x1"]) for w in words))
+    x0_vals = sorted(set(round(w["x0"]) for w in words))
+
+    # Look for the largest horizontal gap between end of text in one region
+    # and start of text in the next, within the central 20-80% of page width
+    zone_start = page_width * 0.20
+    zone_end = page_width * 0.80
+
+    # Build a set of x positions that are "occupied" by text
+    # A gap is a range of x-values where no word starts AND no word ends
+    # We scan for gaps by combining x0 and x1 values
+    all_x = sorted(x1_vals + x0_vals)
+
+    best_gap_center = None
+    best_gap_size = 0
+
+    for i in range(len(all_x) - 1):
+        gap_left = all_x[i]
+        gap_right = all_x[i + 1]
+        gap_size = gap_right - gap_left
+
+        # Only consider gaps in the central zone and of meaningful size
+        gap_center = (gap_left + gap_right) / 2
+        if zone_start < gap_center < zone_end and gap_size > best_gap_size:
+            best_gap_size = gap_size
+            best_gap_center = gap_center
+
+    # Require at least 20pt gap to be considered a real column separator
+    if best_gap_size >= 20:
+        logger.debug(f"Column gap detected: {best_gap_size:.1f}pt at x={best_gap_center:.1f}")
+        return best_gap_center
+
+    return None
+
+
 def _extract_pdf_column_aware(file_path: str) -> str:
     """
     Extract text from PDFs with multi-column layouts using pdfplumber.
 
     Strategy:
-    1. Use pdfplumber to detect text bounding boxes
-    2. For pages with two clear columns (left/right split), extract each
-       column top-to-bottom separately, then concatenate left then right
-    3. For single-column pages, extract normally top-to-bottom
-    4. Fall back to pypdf if pdfplumber fails or isn't installed
+    1. Use pdfplumber to detect text bounding boxes per page
+    2. Find the actual column gap (largest horizontal whitespace gap in
+       the central zone) — NOT a fixed page midpoint
+    3. For two-column pages: extract left column top-to-bottom, then
+       right column top-to-bottom, separated by a clear marker
+    4. For single-column pages: use normal top-to-bottom extraction
+    5. Fall back to pypdf if pdfplumber unavailable or fails
 
-    This handles the common resume format where the left half has project
-    details and the right half has skills, interests, certifications.
+    This correctly handles resumes like Sharma's where the left column
+    (~60% width) has work experience and the right column (~35% width)
+    has skills, certs, and interests.
     """
     try:
         import pdfplumber
 
+        def words_to_text(word_list: list) -> str:
+            """Convert a sorted word list to readable text by grouping into lines."""
+            if not word_list:
+                return ""
+            lines = []
+            current_line = []
+            current_top = None
+            LINE_TOLERANCE = 4  # words within 4pt vertically = same line
+
+            for w in word_list:
+                top = round(w["top"] / LINE_TOLERANCE) * LINE_TOLERANCE
+                if current_top is None or abs(top - current_top) <= LINE_TOLERANCE:
+                    current_line.append(w["text"])
+                    current_top = top
+                else:
+                    if current_line:
+                        lines.append(" ".join(current_line))
+                    current_line = [w["text"]]
+                    current_top = top
+
+            if current_line:
+                lines.append(" ".join(current_line))
+
+            return "\n".join(lines)
+
         all_pages_text = []
 
         with pdfplumber.open(file_path) as pdf:
-            for page in pdf.pages:
+            for page_num, page in enumerate(pdf.pages):
                 words = page.extract_words(
                     x_tolerance=3,
                     y_tolerance=3,
@@ -39,74 +114,36 @@ def _extract_pdf_column_aware(file_path: str) -> str:
                 )
 
                 if not words:
-                    # Try simple extraction for this page
                     text = page.extract_text(x_tolerance=3, y_tolerance=3) or ""
                     all_pages_text.append(text)
                     continue
 
                 page_width = page.width
+                split_x = _find_column_split(words, page_width)
 
-                # Detect if page has two columns by checking x-distribution
-                x_coords = [w["x0"] for w in words]
-                # Find the mid-gap: if there's a significant gap in x-coords near page center
-                # indicating a column separator
-                mid = page_width / 2
-                left_words = [w for w in words if w["x0"] < mid - 10]
-                right_words = [w for w in words if w["x0"] >= mid - 10]
+                if split_x is not None:
+                    logger.info(
+                        f"Page {page_num + 1}: 2-column layout detected "
+                        f"(split at x={split_x:.1f}, page width={page_width:.1f})"
+                    )
 
-                # Determine if it's truly 2-column:
-                # Left column ends before mid and right column starts near/after mid
-                if left_words and right_words:
-                    left_max_x = max(w["x1"] for w in left_words)
-                    right_min_x = min(w["x0"] for w in right_words)
-                    gap = right_min_x - left_max_x
-                    is_two_column = gap > 15  # 15pt gap = real column separator
-                else:
-                    is_two_column = False
+                    # Split words into left and right columns at the gap
+                    left_words = [w for w in words if w["x1"] <= split_x]
+                    right_words = [w for w in words if w["x0"] >= split_x]
 
-                if is_two_column:
-                    logger.info(f"Page detected as 2-column (gap={gap:.1f}pt, width={page_width:.1f}pt)")
-
-                    # Sort each column top-to-bottom
-                    left_sorted = sorted(left_words, key=lambda w: (round(w["top"] / 5) * 5, w["x0"]))
-                    right_sorted = sorted(right_words, key=lambda w: (round(w["top"] / 5) * 5, w["x0"]))
-
-                    def words_to_text(word_list):
-                        """Convert word list to readable text, grouping by line."""
-                        if not word_list:
-                            return ""
-                        lines = []
-                        current_line = []
-                        current_top = None
-                        LINE_TOLERANCE = 5  # words within 5pt vertically = same line
-
-                        for w in word_list:
-                            top = round(w["top"] / LINE_TOLERANCE) * LINE_TOLERANCE
-                            if current_top is None or abs(top - current_top) <= LINE_TOLERANCE:
-                                current_line.append(w["text"])
-                                current_top = top
-                            else:
-                                lines.append(" ".join(current_line))
-                                current_line = [w["text"]]
-                                current_top = top
-
-                        if current_line:
-                            lines.append(" ".join(current_line))
-
-                        return "\n".join(lines)
+                    # Sort each column top-to-bottom, then left-to-right within a line
+                    left_sorted = sorted(left_words, key=lambda w: (round(w["top"] / 4) * 4, w["x0"]))
+                    right_sorted = sorted(right_words, key=lambda w: (round(w["top"] / 4) * 4, w["x0"]))
 
                     left_text = words_to_text(left_sorted)
                     right_text = words_to_text(right_sorted)
 
-                    # Concatenate: left column first (usually projects/experience),
-                    # then right column (skills, certs, interests)
-                    # Add clear section separator so the AI knows these are different areas
                     page_text = left_text
                     if right_text:
                         page_text += "\n\n--- RIGHT COLUMN ---\n\n" + right_text
                     all_pages_text.append(page_text)
                 else:
-                    # Single-column: use normal extraction
+                    # Single-column page — standard top-to-bottom extraction
                     text = page.extract_text(x_tolerance=3, y_tolerance=3) or ""
                     all_pages_text.append(text)
 
