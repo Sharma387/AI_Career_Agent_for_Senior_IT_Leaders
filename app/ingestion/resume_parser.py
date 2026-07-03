@@ -12,49 +12,74 @@ logger = logging.getLogger(__name__)
 
 def _find_column_split(words: list, page_width: float) -> float | None:
     """
-    Find the x-coordinate of the gap between two columns by analysing
-    the distribution of word start positions (x0).
+    Find the x-coordinate of the gap between two columns.
+
+    Strategy: group words by vertical position (lines), find each line's
+    rightmost x of the left region and leftmost x of the right region.
+    If there's a consistent horizontal gap across many lines, it's a
+    real column separator.
 
     Returns the split x-coordinate if a clear 2-column gap is found,
     otherwise returns None (single column).
     """
-    if not words:
+    if not words or len(words) < 10:
         return None
 
-    # Collect all right-edges (x1) and left-edges (x0)
-    x1_vals = sorted(set(round(w["x1"]) for w in words))
-    x0_vals = sorted(set(round(w["x0"]) for w in words))
+    # Group words into lines (within 4pt vertically = same line)
+    LINE_TOLERANCE = 4
+    lines: dict[int, list] = {}
+    for w in words:
+        line_key = round(w["top"] / LINE_TOLERANCE) * LINE_TOLERANCE
+        lines.setdefault(line_key, []).append(w)
 
-    # Look for the largest horizontal gap between end of text in one region
-    # and start of text in the next, within the central 20-80% of page width
-    zone_start = page_width * 0.20
-    zone_end = page_width * 0.80
+    # For each line, collect all unique x-start positions
+    # A two-column layout shows a consistent gap: left words end before X,
+    # right words start after X, with a gap between them across many lines
+    page_zone_start = page_width * 0.25
+    page_zone_end = page_width * 0.80
 
-    # Build a set of x positions that are "occupied" by text
-    # A gap is a range of x-values where no word starts AND no word ends
-    # We scan for gaps by combining x0 and x1 values
-    all_x = sorted(x1_vals + x0_vals)
+    # Collect (left_max_x1, right_min_x0) per line where both columns present
+    gap_candidates = []
+    for _top, line_words in lines.items():
+        sorted_line = sorted(line_words, key=lambda w: w["x0"])
+        if len(sorted_line) < 2:
+            continue
 
-    best_gap_center = None
-    best_gap_size = 0
+        # Look for the largest intra-line gap in x-positions
+        for i in range(len(sorted_line) - 1):
+            gap_start = sorted_line[i]["x1"]
+            gap_end = sorted_line[i + 1]["x0"]
+            gap_size = gap_end - gap_start
+            gap_center = (gap_start + gap_end) / 2
 
-    for i in range(len(all_x) - 1):
-        gap_left = all_x[i]
-        gap_right = all_x[i + 1]
-        gap_size = gap_right - gap_left
+            if gap_size >= 8 and page_zone_start < gap_center < page_zone_end:
+                gap_candidates.append((gap_center, gap_size))
 
-        # Only consider gaps in the central zone and of meaningful size
-        gap_center = (gap_left + gap_right) / 2
-        if zone_start < gap_center < zone_end and gap_size > best_gap_size:
-            best_gap_size = gap_size
-            best_gap_center = gap_center
+    if not gap_candidates:
+        return None
 
-    # Require at least 20pt gap to be considered a real column separator
-    if best_gap_size >= 20:
-        logger.debug(f"Column gap detected: {best_gap_size:.1f}pt at x={best_gap_center:.1f}")
-        return best_gap_center
+    # Cluster gap centers — the most common cluster is the column separator
+    # Simple approach: bucket into 20pt-wide bins and find the largest bucket
+    from collections import defaultdict
+    bins: dict[int, list] = defaultdict(list)
+    BIN_SIZE = 20
+    for center, size in gap_candidates:
+        bin_key = round(center / BIN_SIZE) * BIN_SIZE
+        bins[bin_key].append((center, size))
 
-    return None
+    # Find the bin with the most gap occurrences (most consistent column line)
+    best_bin = max(bins.items(), key=lambda kv: len(kv[1]))
+    bin_count = len(best_bin[1])
+    total_lines = len(lines)
+
+    # Require the gap to appear in at least 15% of lines
+    if bin_count < max(3, total_lines * 0.15):
+        return None
+
+    avg_center = sum(c for c, _ in best_bin[1]) / len(best_bin[1])
+    avg_size = sum(s for _, s in best_bin[1]) / len(best_bin[1])
+    logger.info(f"Column gap: x≈{avg_center:.1f} (avg {avg_size:.1f}pt, in {bin_count}/{total_lines} lines)")
+    return avg_center
 
 
 def _extract_pdf_column_aware(file_path: str) -> str:
