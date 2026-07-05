@@ -20,26 +20,21 @@ from app.agents.json_parser import extract_json_from_llm
 logger = logging.getLogger(__name__)
 
 # ─── PASS 1 PROMPT: Fast extraction ──────────────────────────────────────────
-EXTRACT_PROMPT = """You are a resume data extractor. Output ONLY raw JSON — no markdown, no code blocks, no explanation.
+EXTRACT_PROMPT = """You are a resume data extractor. READ the resume text and extract information into JSON.
 
-IMPORTANT: The resume text may contain a "--- RIGHT COLUMN ---" marker. This means the resume has a two-column layout:
-- Content BEFORE the marker = left column (usually projects, work experience, career history)
-- Content AFTER the marker = right column (usually skills, certifications, education, interests, personal details)
-Treat both columns as part of the same resume. Extract ALL sections from BOTH columns.
+The resume text may contain "--- RIGHT COLUMN ---" (two-column layout):
+- Before marker = left column (work experience, career history)
+- After marker = right column (skills, certifications, education, interests)
+Extract ALL data from BOTH columns.
 
-Schema:
-{"schema_version":"1.0","resume":{"personal_info":{"full_name":"","preferred_name":null,"headline":"","email":"","phone":"","location":{"city":"","state":"","country":""},"linkedin":"","github":""},"professional_summary":{"summary_text":"","years_experience":null,"seniority_level":"","industries":[]},"core_skills":{"technical_skills":[],"functional_skills":[],"tools_platforms":[],"methodologies":[],"domains":[]},"work_experience":[{"company":"","role_title":"","employment_type":"full-time","location":"","start_date":"","end_date":"","responsibilities":[],"achievements":[{"statement":"","impact_metrics":{"type":"","value":"","unit":""}}],"tech_stack":[]}],"projects":[{"project_name":"","description":"","role":"","technologies":[],"outcomes":[]}],"education":[{"institution":"","degree":"","field_of_study":"","end_year":""}],"certifications":[{"name":"","issuing_body":""}],"languages":[{"language":"","proficiency":""}],"ats_metadata":{"keywords":[]}}}
+OUTPUT: Return ONLY a JSON object. No markdown. No code blocks. Start with { end with }.
 
-Rules:
-- Output ONLY the JSON object starting with { and ending with }
-- Do NOT wrap in ```json blocks
-- Do NOT add any text before or after the JSON
-- Extract ALL data from BOTH columns (before AND after the --- RIGHT COLUMN --- marker)
-- Skills found in the right column go into core_skills (categorize: technical_skills, functional_skills, tools_platforms, methodologies, domains)
-- Certifications in the right column go into certifications[]
-- Interests/hobbies in the right column: ignore (not in schema)
-- Use null/empty for missing fields
-- /no_think"""
+Use this structure and REPLACE the placeholder values with ACTUAL data from the resume text:
+
+{"schema_version":"1.0","resume":{"personal_info":{"full_name":"<full name from resume>","preferred_name":null,"headline":"<job title/headline>","email":"<email address>","phone":"<phone number>","location":{"city":"<city>","state":"<state or null>","country":"<country>"},"linkedin":"<linkedin url or null>","github":null},"professional_summary":{"summary_text":"<summary paragraph>","years_experience":<number or null>,"seniority_level":"<senior/mid/etc>","industries":["<industry1>"]},"core_skills":{"technical_skills":["<tech skill 1>","<tech skill 2>"],"functional_skills":["<functional skill>"],"tools_platforms":["<tool 1>","<tool 2>"],"methodologies":["<method 1>"],"domains":["<domain 1>"]},"work_experience":[{"company":"<company name>","company_industry":"<what this company does>","role_title":"<job title>","employment_type":"full-time","location":"<city, country>","start_date":"<MM/YYYY>","end_date":"<MM/YYYY or Present>","responsibilities":["<responsibility 1>","<responsibility 2>"],"achievements":[{"statement":"<achievement>","impact_metrics":{"type":"","value":"","unit":""}}],"tech_stack":["<technology used>"]}],"projects":[{"project_name":"<name>","description":"<description>","role":"<your role>","technologies":["<tech>"],"outcomes":["<outcome>"]}],"education":[{"institution":"<university name>","degree":"<degree name>","field_of_study":"<field>","end_year":"<YYYY>"}],"certifications":[{"name":"<certification name>","issuing_body":"<issuer>"}],"languages":[{"language":"<language>","proficiency":"native"}],"ats_metadata":{"keywords":["<keyword1>","<keyword2>"]}}}
+
+IMPORTANT: Replace ALL placeholder values like <full name from resume> with actual content. Do NOT output this template as-is.
+/no_think"""
 
 
 def chunk_resume(raw_text: str, max_chunk_size: int = 4000) -> list[str]:
@@ -130,6 +125,29 @@ def parse_chunk_fast(chunk: str, chunk_index: int, total_chunks: int, model: str
                 f.write(content)
             logger.warning(f"⚠️  Chunk {chunk_index + 1}/{total_chunks}: Unparseable ({elapsed:.1f}s) — saved to {debug_file}")
             return {}
+
+        # Detect "empty template" response — model copied the schema instead of filling it
+        resume_data = result.get("resume", result)
+        pi = resume_data.get("personal_info", {})
+        if isinstance(pi, dict) and not pi.get("full_name") and not pi.get("email") and not pi.get("phone"):
+            we = resume_data.get("work_experience", [])
+            if not we or (len(we) == 1 and not we[0].get("company")):
+                logger.warning(f"⚠️  Chunk {chunk_index + 1}/{total_chunks}: Model returned EMPTY TEMPLATE ({elapsed:.1f}s) — retrying with explicit instruction")
+                # Retry once with a more direct prompt
+                retry_prompt = f"Extract the following resume text into JSON. The person's name, email, phone, work history, and skills MUST be populated from the text below.\n\nResume text:\n{chunk[:2000]}"
+                retry_response = llm.invoke([HumanMessage(content=retry_prompt)])
+                retry_result = extract_json_from_llm(retry_response.content.strip())
+                if retry_result:
+                    retry_pi = retry_result.get("resume", retry_result).get("personal_info", {})
+                    if retry_pi.get("full_name") or retry_pi.get("email"):
+                        logger.info(f"✓  Chunk {chunk_index + 1}: Retry succeeded")
+                        return retry_result
+                # If retry also empty, return empty
+                debug_file = f"/tmp/chunk_{chunk_index + 1}_empty_template.txt"
+                with open(debug_file, "w") as f:
+                    f.write(f"ORIGINAL:\n{content}\n\nRETRY:\n{retry_response.content if 'retry_response' in dir() else 'N/A'}")
+                logger.warning(f"⚠️  Chunk {chunk_index + 1}: Empty template persisted — debug at {debug_file}")
+                return {}
 
         logger.info(f"✓  Chunk {chunk_index + 1}/{total_chunks}: Parsed in {elapsed:.1f}s")
         return result
