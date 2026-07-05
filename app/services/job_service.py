@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models import Application, ApplicationStatus, JobPosting, MatchResult, CareerProfile, Project, Skill, Skill as SkillModel
+from app.db.models import Application, ApplicationStatus, JobPosting, MatchResult, CareerProfile, Project, Skill, Skill as SkillModel, Certification
 from app.rag.job_rag import JobRAG
 from app.rag.career_rag import CareerRAG
 from app.ingestion.job_parser import JobParser
@@ -372,12 +372,6 @@ class JobService:
         skills = skills_result.scalars().all()
 
         certs_result = await db_session.execute(
-            select(CareerProfile.certifications.property.mapper.class_).where(
-                CareerProfile.certifications.property.mapper.class_.profile_id == profile_id
-            )
-        )
-        from app.db.models import Certification
-        certs_result = await db_session.execute(
             select(Certification).where(Certification.profile_id == profile_id)
         )
         certs = certs_result.scalars().all()
@@ -422,11 +416,53 @@ class JobService:
         resume_text = self.resume_agent.generate_resume(career_chunks, job_chunks, job_data)
         cover_letter_text = self.resume_agent.generate_cover_letter(career_chunks, job_chunks, job_data)
 
+        # Build profile_structured with full data from DB (not raw text parsing)
+        # Build categorized skills with display names matching profile_service.py
+        category_map = {
+            "technical_skills": "Technical Skills",
+            "tools_platforms": "Tools & Platforms",
+            "functional_skills": "Functional / Management Skills",
+            "methodologies": "Methodologies & Frameworks",
+            "domains": "Industry Domains",
+            # Also handle display names stored directly in the DB
+            "Technical Skills": "Technical Skills",
+            "Tools & Platforms": "Tools & Platforms",
+            "Functional / Management Skills": "Functional / Management Skills",
+            "Methodologies & Frameworks": "Methodologies & Frameworks",
+            "Industry Domains": "Industry Domains",
+            # Handle lowercase variants
+            "technical": "Technical Skills",
+            "tools": "Tools & Platforms",
+            "functional": "Functional / Management Skills",
+        }
+
+        skills_dict = {}
+        for skill in skills:
+            raw_cat = skill.category or "General"
+            cat = category_map.get(raw_cat, raw_cat)
+            if cat not in skills_dict:
+                skills_dict[cat] = []
+            skills_dict[cat].append(skill.name)
+
+        # Extract location and linkedin from v1.0 schema if available
+        v1 = profile.parsed_resume_v1 or {}
+        v1_resume = v1.get("resume", {})
+        v1_pi = v1_resume.get("personal_info", {})
+        v1_loc = v1_pi.get("location", {})
+        location_str = ", ".join(p for p in [
+            v1_loc.get("city", "") if isinstance(v1_loc, dict) else "",
+            v1_loc.get("country", "") if isinstance(v1_loc, dict) else "",
+        ] if p)
+
         profile_structured = {
             "full_name": profile.full_name,
             "email": profile.email or "",
+            "phone": profile.phone or "",
+            "location": location_str,
+            "linkedin": v1_pi.get("linkedin", "") or profile.linkedin_url or "",
+            "headline": profile.headline or "",
             "summary": profile.summary or "",
-            "resume_text": profile.raw_resume_text or resume_text,
+            "resume_text": profile.raw_resume_text or "",
             "projects": [
                 {
                     "title": p.title,
@@ -437,18 +473,12 @@ class JobService:
                 }
                 for p in projects
             ],
-            "skills": {},
+            "skills": skills_dict,
             "certifications": [
                 {"name": c.name, "issuer": c.issuer or ""}
                 for c in certs
             ],
         }
-
-        for skill in skills:
-            cat = skill.category or "General"
-            if cat not in profile_structured["skills"]:
-                profile_structured["skills"][cat] = []
-            profile_structured["skills"][cat].append(skill.name)
 
         job_structured = {
             "title": job.title,
