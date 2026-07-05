@@ -153,7 +153,8 @@ def _extract_pdf_column_aware(file_path: str) -> str:
                     )
 
                     # Split words into left and right columns at the gap
-                    left_words = [w for w in words if w["x1"] <= split_x]
+                    # Assign words based on their starting x-position to ensure no text is lost
+                    left_words = [w for w in words if w["x0"] < split_x]
                     right_words = [w for w in words if w["x0"] >= split_x]
 
                     # Sort each column top-to-bottom, then left-to-right within a line
@@ -247,12 +248,39 @@ class ResumeParser:
         )
         contact_matches = re.findall(contact_pattern, text, re.IGNORECASE)
         if contact_matches:
-            first_lines = text.split("\n")[:5]
+            first_lines = text.split("\n")[:6]  # Slightly increased from 5 to 6 lines
             name_line = ""
             for line in first_lines:
-                if not re.search(r"[@\d]", line) and len(line.strip().split()) <= 4:
-                    name_line = line.strip()
-                    break
+                line_stripped = line.strip()
+                # Skip lines with @ or digits (likely contact info)
+                if re.search(r"[@\d]", line):
+                    continue
+                # Skip empty lines or very short lines
+                if len(line_stripped) < 2:
+                    continue
+                # Skip lines that look like section headers (common section names)
+                words = line_stripped.split()
+                if len(words) <= 3 and line_stripped.isupper():
+                    # Avoid common section headers that are all caps
+                    common_headers = {
+                        "SUMMARY", "PROFESSIONAL SUMMARY", "PROFILE", "ABOUT", "OBJECTIVE",
+                        "EXPERIENCE", "WORK EXPERIENCE", "EMPLOYMENT HISTORY", "PROFESSIONAL EXPERIENCE",
+                        "EDUCATION", "ACADEMIC BACKGROUND",
+                        "SKILLS", "TECHNICAL SKILLS", "CORE COMPETENCIES", "TECHNOLOGIES",
+                        "CERTIFICATIONS", "LICENSES", "CERTIFICATIONS & LICENSES", "AWARDS",
+                        "PROJECTS", "KEY SKILLS", "SKILL SET", "AREAS OF EXPERTISE"
+                    }
+                    if line_stripped in common_headers:
+                        continue
+                # Allow reasonable names (typically 2-4 words, could be 1-5 in some cases)
+                if 1 <= len(words) <= 5:
+                    # Additional validation: should look like a person's name
+                    # Contains at least one letter, not just numbers/symbols
+                    if any(c.isalpha() for c in line_stripped):
+                        # Avoid lines that look like they contain contact info or URLs
+                        if not any(indicator in line_lower for indicator in ["@", "http", "www", ".com", ".org", ".net"]):
+                            name_line = line_stripped
+                            break
             parts = [name_line] + contact_matches if name_line else contact_matches
             sections["contact_info"] = "\n".join(parts)
 

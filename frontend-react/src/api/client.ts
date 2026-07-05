@@ -117,16 +117,22 @@ export const api = {
       return client.delete(`/api/profile/${profileId}/projects/${projectId}`);
     },
     downloadResumeHtml(profileId: number) {
-      return `/api/profile/${profileId}/resume/html?download=true`;
+      const token = localStorage.getItem('token');
+      const t = token ? `&token=${token}` : '';
+      return `/api/profile/${profileId}/resume/html?download=true${t}`;
     },
     previewResumeHtml(profileId: number) {
-      return `/api/profile/${profileId}/resume/html`;
+      const token = localStorage.getItem('token');
+      const t = token ? `?token=${token}` : '';
+      return `/api/profile/${profileId}/resume/html${t}`;
     },
     originalResumeUrl(profileId: number) {
       return `/api/profile/${profileId}/resume/original`;
     },
     downloadResumeDocx(profileId: number) {
-      return `/api/profile/${profileId}/resume/docx`;
+      const token = localStorage.getItem('token');
+      const t = token ? `?token=${token}` : '';
+      return `/api/profile/${profileId}/resume/docx${t}`;
     },
   },
 
@@ -245,22 +251,34 @@ export const api = {
       });
     },
     downloadResumeHtml(applicationId: number) {
-      return `/api/applications/${applicationId}/resume/html?download=true`;
+      const token = localStorage.getItem('token');
+      const t = token ? `&token=${token}` : '';
+      return `/api/applications/${applicationId}/resume/html?download=true${t}`;
     },
     downloadCoverLetterHtml(applicationId: number) {
-      return `/api/applications/${applicationId}/cover-letter/html?download=true`;
+      const token = localStorage.getItem('token');
+      const t = token ? `&token=${token}` : '';
+      return `/api/applications/${applicationId}/cover-letter/html?download=true${t}`;
     },
     previewResumeHtml(applicationId: number) {
-      return `/api/applications/${applicationId}/resume/html`;
+      const token = localStorage.getItem('token');
+      const t = token ? `?token=${token}` : '';
+      return `/api/applications/${applicationId}/resume/html${t}`;
     },
     previewCoverLetterHtml(applicationId: number) {
-      return `/api/applications/${applicationId}/cover-letter/html`;
+      const token = localStorage.getItem('token');
+      const t = token ? `?token=${token}` : '';
+      return `/api/applications/${applicationId}/cover-letter/html${t}`;
     },
     downloadResumeDocx(applicationId: number) {
-      return `/api/applications/${applicationId}/resume/docx`;
+      const token = localStorage.getItem('token');
+      const t = token ? `?token=${token}` : '';
+      return `/api/applications/${applicationId}/resume/docx${t}`;
     },
     downloadCoverLetterDocx(applicationId: number) {
-      return `/api/applications/${applicationId}/cover-letter/docx`;
+      const token = localStorage.getItem('token');
+      const t = token ? `?token=${token}` : '';
+      return `/api/applications/${applicationId}/cover-letter/docx${t}`;
     },
   },
 };

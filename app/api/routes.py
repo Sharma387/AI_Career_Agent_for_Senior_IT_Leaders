@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Application, ApplicationStatus, CareerProfile, JobPosting, Project, Skill, Certification, MatchResult, SkillArticulation, get_db
 from app.db.models import User
-from app.api.auth import get_current_user, require_user
+from app.api.auth import get_current_user, require_user, get_current_user_flexible
 from app.services.profile_service import ProfileService
 from app.services.job_service import JobService
 from app.services.tracking_service import TrackingService
@@ -173,12 +173,12 @@ async def get_my_profile(
     profile = result.scalar_one_or_none()
     if not profile:
         return {"profile": None, "projects": [], "skills": []}
-    return await profile_service.get_profile(profile.id, db_session)
+    return await profile_service.get_profile(profile.id, db_session, user_id=user.id)
 
 
 @router.get("/api/profile/{profile_id}")
-async def get_profile(profile_id: int, db_session: AsyncSession = Depends(get_db)):
-    result = await profile_service.get_profile(profile_id, db_session)
+async def get_profile(profile_id: int, user: User = Depends(require_user), db_session: AsyncSession = Depends(get_db)):
+    result = await profile_service.get_profile(profile_id, db_session, user_id=user.id)
     if not result:
         raise HTTPException(status_code=404, detail="Profile not found")
     return result
@@ -188,7 +188,9 @@ async def get_profile(profile_id: int, db_session: AsyncSession = Depends(get_db
 async def download_base_resume_html(
     profile_id: int,
     download: bool = Query(default=False, description="Force download instead of inline display"),
+    token: str = Query(default=None, description="JWT token (for iframe/direct browser access)"),
     db_session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_flexible),
 ):
     result = await db_session.execute(
         select(CareerProfile).where(CareerProfile.id == profile_id)
@@ -216,11 +218,12 @@ async def download_base_resume_html(
 @router.get("/api/profile/{profile_id}/resume/original")
 async def get_original_resume(
     profile_id: int,
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
     """Serve the original uploaded resume file (PDF/DOCX/TXT)."""
     result = await db_session.execute(
-        select(CareerProfile).where(CareerProfile.id == profile_id)
+        select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user.id)
     )
     profile = result.scalar_one_or_none()
     if not profile or not profile.original_file_data:
@@ -247,7 +250,9 @@ async def get_original_resume(
 @router.get("/api/profile/{profile_id}/resume/docx")
 async def download_base_resume_docx(
     profile_id: int,
+    token: str = Query(default=None, description="JWT token (for direct download links)"),
     db_session: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user_flexible),
 ):
     result = await db_session.execute(
         select(CareerProfile).where(CareerProfile.id == profile_id)
@@ -266,12 +271,13 @@ async def download_base_resume_docx(
 
 
 @router.post("/api/profile/{profile_id}/project")
-async def add_project(
+async def add_profile_project(
     profile_id: int,
     request: AddProjectRequest,
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
-    result = await profile_service.add_project(profile_id, request.model_dump(), db_session)
+    result = await profile_service.add_project(profile_id, request.model_dump(), db_session, user_id=user.id)
     if not result:
         raise HTTPException(status_code=404, detail="Profile not found")
     return result
@@ -458,8 +464,17 @@ async def scrape_multiple_jobs(
 async def match_job(
     job_id: int,
     profile_id: int = Query(...),
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
+    # Verify the profile belongs to the current user
+    profile_result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
     result = await job_service.match_job(job_id, profile_id, db_session)
     if not result:
         raise HTTPException(status_code=404, detail="Job or profile not found")
@@ -470,8 +485,17 @@ async def match_job(
 async def match_job_enhanced(
     job_id: int,
     profile_id: int = Query(...),
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
+    # Verify the profile belongs to the current user
+    profile_result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
     result = await job_service.match_job_enhanced(job_id, profile_id, db_session)
     if not result:
         raise HTTPException(status_code=404, detail="Job or profile not found")
@@ -482,8 +506,17 @@ async def match_job_enhanced(
 async def generate_materials(
     job_id: int,
     profile_id: int = Query(...),
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
+    # Verify the profile belongs to the current user
+    profile_result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
     result = await job_service.generate_application_materials(job_id, profile_id, db_session)
     if not result:
         raise HTTPException(status_code=404, detail="Job or profile not found")
@@ -493,8 +526,17 @@ async def generate_materials(
 @router.post("/api/applications/track")
 async def track_application(
     request: TrackApplicationRequest,
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
+    # Verify the profile belongs to the current user
+    profile_result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == request.profile_id, CareerProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
     result = await tracking_service.track_application(
         request.job_id, request.profile_id, request.status, db_session
     )
@@ -507,8 +549,25 @@ async def track_application(
 async def update_application_status(
     application_id: int,
     request: UpdateStatusRequest,
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
+    # First get the application to verify
+    result = await db_session.execute(
+        select(Application).where(Application.id == application_id)
+    )
+    application = result.scalar_one_or_none()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    # Verify the application belongs to the current user's profile
+    profile_result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == application.profile_id, CareerProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Application not found")
+
     result = await tracking_service.update_application_status(
         application_id, request.new_status, feedback=request.feedback, db_session=db_session
     )
@@ -520,30 +579,58 @@ async def update_application_status(
 @router.get("/api/applications/stats/{profile_id}")
 async def get_application_stats(
     profile_id: int,
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
+    # Verify the profile belongs to the current user
+    profile_result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
     return await tracking_service.get_application_stats(profile_id, db_session)
 
 
 @router.get("/api/applications/{profile_id}")
 async def list_applications(
     profile_id: int,
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
+    # Verify the profile belongs to the current user
+    profile_result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
     return await tracking_service.get_all_applications(profile_id, db_session)
 
 
 @router.get("/api/applications/{profile_id}/insights")
 async def get_insights(
     profile_id: int,
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
+    # Verify the profile belongs to the current user
+    profile_result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
     return await tracking_service.get_insights(profile_id, db_session)
 
 
 @router.get("/api/applications/{application_id}/materials")
 async def get_application_materials(
     application_id: int,
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
     result = await db_session.execute(
@@ -551,6 +638,14 @@ async def get_application_materials(
     )
     application = result.scalar_one_or_none()
     if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    # Verify the application belongs to the current user's profile
+    profile_result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == application.profile_id, CareerProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
         raise HTTPException(status_code=404, detail="Application not found")
 
     job_result = await db_session.execute(
@@ -577,6 +672,7 @@ async def get_application_materials(
 async def update_application_materials(
     application_id: int,
     request: UpdateResumeRequest,
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
     result = await db_session.execute(
@@ -584,6 +680,14 @@ async def update_application_materials(
     )
     application = result.scalar_one_or_none()
     if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    # Verify the application belongs to the current user's profile
+    profile_result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == application.profile_id, CareerProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
         raise HTTPException(status_code=404, detail="Application not found")
 
     application.resume_version_text = request.resume_text
@@ -598,10 +702,11 @@ async def update_application_materials(
     }
 
 
-async def _get_profile_structured(profile_id: int, db_session: AsyncSession) -> dict:
-    profile_result = await db_session.execute(
-        select(CareerProfile).where(CareerProfile.id == profile_id)
-    )
+async def _get_profile_structured(profile_id: int, db_session: AsyncSession, user_id: int | None = None) -> dict:
+    query = select(CareerProfile).where(CareerProfile.id == profile_id)
+    if user_id is not None:
+        query = query.where(CareerProfile.user_id == user_id)
+    profile_result = await db_session.execute(query)
     profile = profile_result.scalar_one_or_none()
     if not profile:
         return {}
@@ -652,7 +757,9 @@ async def _get_profile_structured(profile_id: int, db_session: AsyncSession) -> 
 async def download_resume_html(
     application_id: int,
     download: bool = Query(default=False, description="Force download instead of inline display"),
+    token: str = Query(default=None, description="JWT token (for iframe/direct browser access)"),
     db_session: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user_flexible),
 ):
     result = await db_session.execute(
         select(Application).where(Application.id == application_id)
@@ -687,7 +794,9 @@ async def download_resume_html(
 async def download_cover_letter_html(
     application_id: int,
     download: bool = Query(default=False, description="Force download instead of inline display"),
+    token: str = Query(default=None, description="JWT token (for iframe/direct browser access)"),
     db_session: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user_flexible),
 ):
     result = await db_session.execute(
         select(Application).where(Application.id == application_id)
@@ -719,7 +828,9 @@ async def download_cover_letter_html(
 @router.get("/api/applications/{application_id}/resume/docx")
 async def download_resume_docx(
     application_id: int,
+    token: str = Query(default=None, description="JWT token (for direct download links)"),
     db_session: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user_flexible),
 ):
     result = await db_session.execute(
         select(Application).where(Application.id == application_id)
@@ -750,7 +861,9 @@ async def download_resume_docx(
 @router.get("/api/applications/{application_id}/cover-letter/docx")
 async def download_cover_letter_docx(
     application_id: int,
+    token: str = Query(default=None, description="JWT token (for direct download links)"),
     db_session: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user_flexible),
 ):
     result = await db_session.execute(
         select(Application).where(Application.id == application_id)
@@ -1110,8 +1223,17 @@ async def scrape_seek_jobs(
 async def get_match_result(
     job_id: int,
     profile_id: int,
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
+    # Verify the profile belongs to the current user
+    profile_result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
     result = await db_session.execute(
         select(MatchResult).where(
             MatchResult.job_id == job_id,
@@ -1156,6 +1278,7 @@ async def get_match_result(
 async def save_articulations(
     match_id: int,
     articulations: list[ArticulationRequest],
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
     match_result = await db_session.execute(
@@ -1164,6 +1287,14 @@ async def save_articulations(
     match = match_result.scalar_one_or_none()
     if not match:
         raise HTTPException(status_code=404, detail="Match result not found")
+
+    # Verify the profile belongs to the current user
+    profile_result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == match.profile_id, CareerProfile.user_id == user.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
 
     existing_result = await db_session.execute(
         select(SkillArticulation).where(SkillArticulation.match_result_id == match_id)
@@ -1215,10 +1346,11 @@ class UpdateProjectRequest(BaseModel):
 async def update_profile(
     profile_id: int,
     request: UpdateProfileRequest,
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
     result = await db_session.execute(
-        select(CareerProfile).where(CareerProfile.id == profile_id)
+        select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user.id)
     )
     profile = result.scalar_one_or_none()
     if not profile:
@@ -1288,10 +1420,11 @@ async def update_profile(
 async def update_skills(
     profile_id: int,
     request: UpdateSkillsRequest,
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
     result = await db_session.execute(
-        select(CareerProfile).where(CareerProfile.id == profile_id)
+        select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user.id)
     )
     profile = result.scalar_one_or_none()
     if not profile:
@@ -1328,10 +1461,11 @@ async def update_project(
     profile_id: int,
     project_id: int,
     request: UpdateProjectRequest,
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
     result = await db_session.execute(
-        select(CareerProfile).where(CareerProfile.id == profile_id)
+        select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user.id)
     )
     profile = result.scalar_one_or_none()
     if not profile:
@@ -1369,10 +1503,11 @@ async def update_project(
 async def delete_project(
     profile_id: int,
     project_id: int,
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
     result = await db_session.execute(
-        select(CareerProfile).where(CareerProfile.id == profile_id)
+        select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user.id)
     )
     profile = result.scalar_one_or_none()
     if not profile:
@@ -1394,19 +1529,21 @@ async def delete_project(
 async def get_interview_strategy(
     job_id: int,
     profile_id: int,
+    user: User = Depends(require_user),
     db_session: AsyncSession = Depends(get_db),
 ):
     from app.services.job_service import JobService
     job_svc = JobService()
 
-    match_result = await job_svc.match_job(job_id, profile_id, db_session)
-
-    result = await db_session.execute(
-        select(CareerProfile).where(CareerProfile.id == profile_id)
+    # Verify the profile belongs to the current user
+    profile_result = await db_session.execute(
+        select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user.id)
     )
-    profile = result.scalar_one_or_none()
+    profile = profile_result.scalar_one_or_none()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
+
+    match_result = await job_svc.match_job(job_id, profile_id, db_session)
 
     skills_result = await db_session.execute(
         select(Skill).where(Skill.profile_id == profile_id)

@@ -281,9 +281,9 @@ class ProfileService:
             "formatted_resume_html": formatted_html,
         }
 
-    async def get_profile(self, profile_id: int, db_session: AsyncSession) -> dict:
+    async def get_profile(self, profile_id: int, db_session: AsyncSession, user_id: int) -> dict:
         result = await db_session.execute(
-            select(CareerProfile).where(CareerProfile.id == profile_id)
+            select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user_id)
         )
         profile = result.scalar_one_or_none()
         if not profile:
@@ -361,9 +361,9 @@ class ProfileService:
             "career_chunks": chunks,
         }
 
-    async def update_profile(self, profile_id: int, updates: dict, db_session: AsyncSession) -> dict:
+    async def update_profile(self, profile_id: int, updates: dict, db_session: AsyncSession, user_id: int) -> dict:
         result = await db_session.execute(
-            select(CareerProfile).where(CareerProfile.id == profile_id)
+            select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user_id)
         )
         profile = result.scalar_one_or_none()
         if not profile:
@@ -421,9 +421,9 @@ class ProfileService:
             "summary": profile.summary,
         }
 
-    async def add_project(self, profile_id: int, project_data: dict, db_session: AsyncSession) -> dict:
+    async def add_project(self, profile_id: int, project_data: dict, db_session: AsyncSession, user_id: int) -> dict:
         result = await db_session.execute(
-            select(CareerProfile).where(CareerProfile.id == profile_id)
+            select(CareerProfile).where(CareerProfile.id == profile_id, CareerProfile.user_id == user_id)
         )
         profile = result.scalar_one_or_none()
         if not profile:
