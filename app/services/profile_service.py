@@ -244,6 +244,7 @@ class ProfileService:
             "headline": v1_resume.get("personal_info", {}).get("headline", "") or "",
             "summary": expanded.get("summary", "") or parsed.get("summary", ""),
             "resume_text": raw_text,
+            "parsed_resume_v1": full_schema,
             "projects": [
                 {
                     "title": p.get("title", ""),

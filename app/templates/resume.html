@@ -126,24 +126,39 @@
 
   /* --- Experience --- */
   .experience-item {
-    margin-bottom: 16px;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+
+  .experience-item:last-child {
+    border-bottom: none;
+  }
+
+  .experience-item .company-name {
+    font-size: 12pt;
+    font-weight: 700;
+    color: #1a5276;
+  }
+
+  .experience-item .company-about {
+    font-size: 9.5pt;
+    color: #555;
+    font-style: italic;
+    margin-bottom: 3px;
+    line-height: 1.4;
+  }
+
+  .experience-item .role-meta {
+    font-size: 9.5pt;
+    color: #777;
+    margin-bottom: 6px;
   }
 
   .experience-item .role-title {
     font-size: 11pt;
     font-weight: 700;
     color: #2d2d2d;
-  }
-
-  .experience-item .company-name {
-    font-size: 10.5pt;
-    color: #1a5276;
-    font-weight: 600;
-  }
-
-  .experience-item .role-meta {
-    font-size: 9.5pt;
-    color: #777;
     margin-bottom: 4px;
   }
 
@@ -164,41 +179,6 @@
     font-size: 10.5pt;
     margin-bottom: 3px;
     line-height: 1.4;
-  }
-
-  /* --- Projects --- */
-  .project-item {
-    margin-bottom: 14px;
-  }
-
-  .project-item .project-title {
-    font-size: 11pt;
-    font-weight: 700;
-    color: #2d2d2d;
-  }
-
-  .project-item .project-role {
-    font-size: 10pt;
-    color: #1a5276;
-    font-weight: 600;
-  }
-
-  .project-item .project-desc {
-    font-size: 10.5pt;
-    color: #333;
-    margin-top: 2px;
-  }
-
-  .project-item .project-tech {
-    font-size: 9.5pt;
-    color: #555;
-    margin-top: 2px;
-  }
-
-  .project-item .project-impact {
-    font-size: 10.5pt;
-    color: #333;
-    margin-top: 2px;
   }
 
   /* --- Education --- */
@@ -341,50 +321,33 @@
     <div class="section-title">Work Experience</div>
     {% for job in experience %}
     <div class="experience-item">
-      <div class="role-title">{{ job.title }}</div>
+      {# Company name first (big, navy) #}
       {% if job.company %}
       <div class="company-name">{{ job.company }}</div>
       {% endif %}
-      {% if job.dates or job.location %}
-      <div class="role-meta">
-        {% if job.dates %}{{ job.dates }}{% endif %}
-        {% if job.dates and job.location %} | {% endif %}
-        {% if job.location %}{{ job.location }}{% endif %}
-      </div>
+      {# About the company (italic grey) #}
+      {% if job.company_about %}
+      <div class="company-about">{{ job.company_about }}</div>
       {% endif %}
+      {# Dates #}
+      {% if job.dates %}
+      <div class="role-meta">{{ job.dates }}{% if job.location %} &nbsp;|&nbsp; {{ job.location }}{% endif %}</div>
+      {% endif %}
+      {# Role title (bold dark) #}
+      {% if job.title %}
+      <div class="role-title">{{ job.title }}</div>
+      {% endif %}
+      {# Description #}
       {% if job.description %}
       <div class="role-description">{{ job.description }}</div>
       {% endif %}
+      {# Bullets #}
       {% if job.bullets %}
       <ul>
         {% for bullet in job.bullets %}
         <li>{{ bullet }}</li>
         {% endfor %}
       </ul>
-      {% endif %}
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  <!-- Key Projects -->
-  {% if projects %}
-  <div class="section">
-    <div class="section-title">Key Projects</div>
-    {% for project in projects %}
-    <div class="project-item">
-      <div class="project-title">{{ project.title }}</div>
-      {% if project.role %}
-      <div class="project-role">{{ project.role }}</div>
-      {% endif %}
-      {% if project.description %}
-      <div class="project-desc">{{ project.description }}</div>
-      {% endif %}
-      {% if project.technologies %}
-      <div class="project-tech"><strong>Technologies:</strong> {{ project.technologies }}</div>
-      {% endif %}
-      {% if project.impact %}
-      <div class="project-impact"><strong>Impact:</strong> {{ project.impact }}</div>
       {% endif %}
     </div>
     {% endfor %}

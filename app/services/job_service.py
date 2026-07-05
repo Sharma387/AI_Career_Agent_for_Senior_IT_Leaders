@@ -463,6 +463,7 @@ class JobService:
             "headline": profile.headline or "",
             "summary": profile.summary or "",
             "resume_text": profile.raw_resume_text or "",
+            "parsed_resume_v1": profile.parsed_resume_v1,
             "projects": [
                 {
                     "title": p.title,

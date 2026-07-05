@@ -221,6 +221,51 @@ def render_resume_html(profile_data: dict, job_data: dict = None) -> str:
 
     resume = _parse_resume_text(profile_data.get("resume_text", ""))
 
+    # Use v1.0 work_experience if available (richer structured data)
+    v1_schema = profile_data.get("parsed_resume_v1") or {}
+    v1_resume = v1_schema.get("resume", {}) if v1_schema else {}
+    v1_experience = v1_resume.get("work_experience", [])
+
+    if v1_experience:
+        # Map v1.0 experience to template-friendly format
+        experience = []
+        for exp in v1_experience:
+            achievements = [
+                a.get("statement", "") if isinstance(a, dict) else str(a)
+                for a in exp.get("achievements", [])
+                if a
+            ]
+            responsibilities = [r for r in exp.get("responsibilities", []) if r]
+            bullets = achievements + responsibilities
+            start = exp.get("start_date", "")
+            end = exp.get("end_date", "")
+            dates = f"{start} – {end}" if start or end else ""
+            experience.append({
+                "company": exp.get("company", ""),
+                "company_about": exp.get("company_industry", ""),
+                "title": exp.get("role_title", ""),
+                "dates": dates,
+                "location": exp.get("location", ""),
+                "bullets": [b for b in bullets if b],
+                "description": "",
+            })
+    else:
+        experience = resume["experience"]
+
+    # Use v1.0 education if available
+    v1_education = v1_resume.get("education", [])
+    if v1_education:
+        education = [
+            {
+                "degree": e.get("degree", ""),
+                "institution": e.get("institution", ""),
+                "year": e.get("end_year", e.get("year", "")),
+            }
+            for e in v1_education
+        ]
+    else:
+        education = resume["education"]
+
     context = {
         "candidate_name": profile_data.get("full_name", "Candidate"),
         "headline": profile_data.get("headline", ""),
@@ -229,10 +274,9 @@ def render_resume_html(profile_data: dict, job_data: dict = None) -> str:
         "location": profile_data.get("location", ""),
         "linkedin": profile_data.get("linkedin", ""),
         "summary": profile_data.get("summary") or resume["summary"],
-        "experience": resume["experience"],
-        "projects": profile_data.get("projects", []),
+        "experience": experience,
         "skills": profile_data.get("skills") or resume["skills"],
-        "education": resume["education"],
+        "education": education,
         "certifications": profile_data.get("certifications", []) or resume["certifications"],
     }
 
@@ -376,10 +420,11 @@ def generate_resume_docx(profile_data: dict, job_data: dict = None) -> bytes:
     """Generate a clean professional DOCX resume matching the HTML template style."""
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
+    from docx.shared import Pt as _Pt
 
     doc = Document()
 
-    # Set page margins (A4 with reasonable margins)
+    # A4 page with 2cm margins
     section = doc.sections[0]
     section.page_width = Cm(21)
     section.page_height = Cm(29.7)
@@ -392,43 +437,92 @@ def generate_resume_docx(profile_data: dict, job_data: dict = None) -> bytes:
     DARK = RGBColor(0x2d, 0x2d, 0x2d)
     GREY = RGBColor(0x77, 0x77, 0x77)
 
-    name = profile_data.get("full_name", "Candidate")
-    email = profile_data.get("email", "")
-    phone = profile_data.get("phone", "")
-    location = profile_data.get("location", "")
-    linkedin = profile_data.get("linkedin", "")
-    headline = profile_data.get("headline", "")
+    name        = profile_data.get("full_name", "Candidate")
+    email       = profile_data.get("email", "")
+    phone       = profile_data.get("phone", "")
+    location    = profile_data.get("location", "")
+    linkedin    = profile_data.get("linkedin", "")
+    headline    = profile_data.get("headline", "")
     summary_text = profile_data.get("summary", "")
     skills_data = profile_data.get("skills", {})
-    projects = profile_data.get("projects", [])
     certifications = profile_data.get("certifications", [])
 
-    # Parse experience and education from raw text
-    resume = _parse_resume_text(profile_data.get("resume_text", ""))
-    experience = resume.get("experience", [])
-    education = resume.get("education", [])
+    # Use v1.0 structured data for experience & education if available
+    v1_schema  = profile_data.get("parsed_resume_v1") or {}
+    v1_resume  = v1_schema.get("resume", {}) if v1_schema else {}
+    v1_exp     = v1_resume.get("work_experience", [])
+    v1_edu     = v1_resume.get("education", [])
 
-    def add_section_heading(text):
+    if v1_exp:
+        experience = []
+        for exp in v1_exp:
+            achievements = [
+                a.get("statement", "") if isinstance(a, dict) else str(a)
+                for a in exp.get("achievements", []) if a
+            ]
+            responsibilities = [r for r in exp.get("responsibilities", []) if r]
+            bullets = achievements + responsibilities
+            start = exp.get("start_date", "")
+            end   = exp.get("end_date", "")
+            dates = f"{start} – {end}" if (start or end) else ""
+            experience.append({
+                "company":       exp.get("company", ""),
+                "company_about": exp.get("company_industry", ""),
+                "title":         exp.get("role_title", ""),
+                "dates":         dates,
+                "location":      exp.get("location", ""),
+                "bullets":       [b for b in bullets if b],
+            })
+    else:
+        raw = _parse_resume_text(profile_data.get("resume_text", ""))
+        experience = raw.get("experience", [])
+
+    if v1_edu:
+        education = [
+            {"degree": e.get("degree",""), "institution": e.get("institution",""), "year": e.get("end_year", e.get("year",""))}
+            for e in v1_edu
+        ]
+    else:
+        raw = _parse_resume_text(profile_data.get("resume_text", ""))
+        education = raw.get("education", [])
+
+    # ── helpers ──────────────────────────────────────────────────────────────
+
+    def add_section_heading(text: str):
+        """Navy uppercase heading with bottom border line."""
         p = doc.add_paragraph()
         p.paragraph_format.space_before = Pt(12)
-        p.paragraph_format.space_after = Pt(4)
+        p.paragraph_format.space_after  = Pt(4)
         run = p.add_run(text.upper())
         run.bold = True
         run.font.size = Pt(11)
         run.font.color.rgb = NAVY
-        # Add bottom border via XML
-        pPr = p._p.get_or_add_pPr()
+        pPr  = p._p.get_or_add_pPr()
         pBdr = OxmlElement('w:pBdr')
-        bottom = OxmlElement('w:bottom')
-        bottom.set(qn('w:val'), 'single')
-        bottom.set(qn('w:sz'), '6')
-        bottom.set(qn('w:space'), '1')
-        bottom.set(qn('w:color'), '1a5276')
-        pBdr.append(bottom)
+        bot  = OxmlElement('w:bottom')
+        bot.set(qn('w:val'),   'single')
+        bot.set(qn('w:sz'),    '6')
+        bot.set(qn('w:space'), '1')
+        bot.set(qn('w:color'), '1a5276')
+        pBdr.append(bot)
         pPr.append(pBdr)
         return p
 
-    # NAME
+    def set_cell_no_borders(cell):
+        """Make a table cell have no visible borders."""
+        tc   = cell._tc
+        tcPr = tc.get_or_add_tcPr()
+        tcBorders = OxmlElement('w:tcBorders')
+        for side in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+            el = OxmlElement(f'w:{side}')
+            el.set(qn('w:val'),   'none')
+            el.set(qn('w:sz'),    '0')
+            el.set(qn('w:space'), '0')
+            el.set(qn('w:color'), 'auto')
+            tcBorders.append(el)
+        tcPr.append(tcBorders)
+
+    # ── NAME ─────────────────────────────────────────────────────────────────
     p = doc.add_paragraph()
     p.paragraph_format.space_after = Pt(2)
     run = p.add_run(name)
@@ -436,7 +530,6 @@ def generate_resume_docx(profile_data: dict, job_data: dict = None) -> bytes:
     run.font.size = Pt(22)
     run.font.color.rgb = NAVY
 
-    # Headline
     if headline:
         p = doc.add_paragraph()
         p.paragraph_format.space_after = Pt(4)
@@ -445,75 +538,104 @@ def generate_resume_docx(profile_data: dict, job_data: dict = None) -> bytes:
         run.font.color.rgb = NAVY
         run.italic = True
 
-    # Contact line
+    # Contact: location | phone | email | linkedin
     contact_parts = [x for x in [location, phone, email, linkedin] if x]
     if contact_parts:
         p = doc.add_paragraph(" | ".join(contact_parts))
         p.paragraph_format.space_after = Pt(8)
-        for run in p.runs:
-            run.font.size = Pt(9.5)
-            run.font.color.rgb = DARK
+        for r in p.runs:
+            r.font.size = Pt(9.5)
+            r.font.color.rgb = DARK
 
-    # Summary
+    # ── SUMMARY ──────────────────────────────────────────────────────────────
     if summary_text:
         add_section_heading("Summary")
         p = doc.add_paragraph(summary_text)
         p.paragraph_format.space_after = Pt(4)
-        for run in p.runs:
-            run.font.size = Pt(10.5)
+        for r in p.runs:
+            r.font.size = Pt(10.5)
 
-    # Skills by category
-    if skills_data:
-        add_section_heading("Key Skills")
-        if isinstance(skills_data, dict):
-            for category, skill_list in skills_data.items():
-                if not skill_list:
-                    continue
-                # Category sub-heading
-                p = doc.add_paragraph()
-                p.paragraph_format.space_before = Pt(4)
-                p.paragraph_format.space_after = Pt(2)
-                run = p.add_run(category)
-                run.bold = True
-                run.font.size = Pt(10)
-                run.font.color.rgb = NAVY
-                # Skills as bullet list
-                items = skill_list if isinstance(skill_list, list) else [str(skill_list)]
-                for skill in items:
-                    if skill:
-                        p = doc.add_paragraph(style='List Bullet')
-                        p.paragraph_format.left_indent = Cm(0.5)
-                        p.paragraph_format.space_after = Pt(1)
-                        run = p.add_run(str(skill))
-                        run.font.size = Pt(10.5)
+    # ── SKILLS — 2-column borderless table ───────────────────────────────────
+    if skills_data and isinstance(skills_data, dict):
+        categories = [(cat, lst) for cat, lst in skills_data.items() if lst]
+        if categories:
+            add_section_heading("Key Skills")
+            # Pair up categories into rows of 2
+            rows_data = [categories[i:i+2] for i in range(0, len(categories), 2)]
+            tbl = doc.add_table(rows=len(rows_data), cols=2)
+            tbl.style = 'Table Grid'
+            # Remove all table-level borders via XML
+            tblPr = tbl._tbl.find(qn('w:tblPr'))
+            if tblPr is None:
+                tblPr = OxmlElement('w:tblPr')
+                tbl._tbl.insert(0, tblPr)
+            tblBorders = OxmlElement('w:tblBorders')
+            for side in ('top','left','bottom','right','insideH','insideV'):
+                el = OxmlElement(f'w:{side}')
+                el.set(qn('w:val'),   'none')
+                el.set(qn('w:sz'),    '0')
+                el.set(qn('w:space'), '0')
+                el.set(qn('w:color'), 'auto')
+                tblBorders.append(el)
+            tblPr.append(tblBorders)
 
-    # Work Experience
+            for r_idx, row_cats in enumerate(rows_data):
+                row = tbl.rows[r_idx]
+                for c_idx, (cat, skill_list) in enumerate(row_cats):
+                    cell = row.cells[c_idx]
+                    set_cell_no_borders(cell)
+                    # Category heading
+                    p = cell.paragraphs[0]
+                    p.clear()
+                    run = p.add_run(cat)
+                    run.bold = True
+                    run.font.size = Pt(10)
+                    run.font.color.rgb = NAVY
+                    p.paragraph_format.space_after = Pt(2)
+                    # Skill bullets
+                    items = skill_list if isinstance(skill_list, list) else [str(skill_list)]
+                    for skill in items:
+                        if skill:
+                            bp = cell.add_paragraph(f"• {skill}")
+                            bp.paragraph_format.left_indent = Cm(0.3)
+                            bp.paragraph_format.space_after = Pt(1)
+                            for r in bp.runs:
+                                r.font.size = Pt(10.5)
+                # Fill empty cell if odd number of categories
+                if len(row_cats) == 1:
+                    set_cell_no_borders(row.cells[1])
+
+    # ── WORK EXPERIENCE ──────────────────────────────────────────────────────
     if experience:
         add_section_heading("Work Experience")
         for exp in experience:
-            title = exp.get("title", "")
-            company = exp.get("company", "")
-            dates = exp.get("dates", "")
-            exp_loc = exp.get("location", "")
-            description = exp.get("description", "")
-            bullets = exp.get("bullets", [])
+            company      = exp.get("company", "")
+            company_about = exp.get("company_about", "") or exp.get("description", "")
+            dates        = exp.get("dates", "")
+            exp_loc      = exp.get("location", "")
+            title        = exp.get("title", "")
+            bullets      = exp.get("bullets", [])
 
-            p = doc.add_paragraph()
-            p.paragraph_format.space_before = Pt(8)
-            p.paragraph_format.space_after = Pt(1)
-            run = p.add_run(title)
-            run.bold = True
-            run.font.size = Pt(11)
-            run.font.color.rgb = DARK
-
+            # Company name — large navy bold
             if company:
-                p = doc.add_paragraph(company)
-                p.paragraph_format.space_after = Pt(1)
-                for r in p.runs:
-                    r.font.size = Pt(10.5)
-                    r.font.color.rgb = NAVY
-                    r.bold = True
+                p = doc.add_paragraph()
+                p.paragraph_format.space_before = Pt(10)
+                p.paragraph_format.space_after  = Pt(1)
+                run = p.add_run(company)
+                run.bold = True
+                run.font.size = Pt(12)
+                run.font.color.rgb = NAVY
 
+            # About company — small italic grey
+            if company_about:
+                p = doc.add_paragraph(company_about)
+                p.paragraph_format.space_after = Pt(2)
+                for r in p.runs:
+                    r.font.size = Pt(9.5)
+                    r.font.color.rgb = GREY
+                    r.italic = True
+
+            # Dates | Location
             meta = " | ".join(x for x in [dates, exp_loc] if x)
             if meta:
                 p = doc.add_paragraph(meta)
@@ -522,12 +644,16 @@ def generate_resume_docx(profile_data: dict, job_data: dict = None) -> bytes:
                     r.font.size = Pt(9.5)
                     r.font.color.rgb = GREY
 
-            if description:
-                p = doc.add_paragraph(description)
-                p.paragraph_format.space_after = Pt(2)
-                for r in p.runs:
-                    r.font.size = Pt(10.5)
+            # Role title — bold dark
+            if title:
+                p = doc.add_paragraph()
+                p.paragraph_format.space_after = Pt(3)
+                run = p.add_run(title)
+                run.bold = True
+                run.font.size = Pt(11)
+                run.font.color.rgb = DARK
 
+            # Achievement/responsibility bullets
             for bullet in bullets:
                 if bullet:
                     p = doc.add_paragraph(style='List Bullet')
@@ -536,59 +662,32 @@ def generate_resume_docx(profile_data: dict, job_data: dict = None) -> bytes:
                     run = p.add_run(bullet)
                     run.font.size = Pt(10.5)
 
-    # Projects
-    if projects:
-        add_section_heading("Key Projects")
-        for proj in projects:
-            p = doc.add_paragraph()
-            p.paragraph_format.space_before = Pt(6)
-            p.paragraph_format.space_after = Pt(1)
-            run = p.add_run(proj.get("title", ""))
-            run.bold = True
-            run.font.size = Pt(11)
-
-            if proj.get("role"):
-                p = doc.add_paragraph(proj["role"])
-                for r in p.runs:
-                    r.font.size = Pt(10.5)
-                    r.font.color.rgb = NAVY
-            if proj.get("description"):
-                p = doc.add_paragraph(proj["description"])
-                for r in p.runs:
-                    r.font.size = Pt(10.5)
-            if proj.get("technologies"):
-                p = doc.add_paragraph(f"Technologies: {proj['technologies']}")
-                for r in p.runs:
-                    r.font.size = Pt(10)
-            if proj.get("impact"):
-                p = doc.add_paragraph(f"Impact: {proj['impact']}")
-                for r in p.runs:
-                    r.font.size = Pt(10)
-
-    # Education
+    # ── EDUCATION ────────────────────────────────────────────────────────────
     if education:
         add_section_heading("Education")
         for edu in education:
             p = doc.add_paragraph()
             p.paragraph_format.space_before = Pt(4)
+            p.paragraph_format.space_after  = Pt(1)
             run = p.add_run(edu.get("degree", ""))
             run.bold = True
             run.font.size = Pt(11)
 
-            meta = " • ".join(x for x in [edu.get("institution", ""), edu.get("year", "")] if x)
+            meta = " • ".join(x for x in [edu.get("institution",""), edu.get("year","")] if x)
             if meta:
                 p = doc.add_paragraph(meta)
+                p.paragraph_format.space_after = Pt(2)
                 for r in p.runs:
                     r.font.size = Pt(10)
                     r.font.color.rgb = GREY
 
-    # Certifications
+    # ── CERTIFICATIONS ───────────────────────────────────────────────────────
     if certifications:
         add_section_heading("Certifications")
         for cert in certifications:
-            cert_name = cert.get("name", "") if isinstance(cert, dict) else str(cert)
-            issuer = cert.get("issuer", "") if isinstance(cert, dict) else ""
-            text = f"{cert_name} — {issuer}" if issuer else cert_name
+            cert_name = cert.get("name","") if isinstance(cert, dict) else str(cert)
+            issuer    = cert.get("issuer","") if isinstance(cert, dict) else ""
+            text      = f"{cert_name} — {issuer}" if issuer else cert_name
             p = doc.add_paragraph(style='List Bullet')
             p.paragraph_format.space_after = Pt(2)
             run = p.add_run(text)

@@ -736,8 +736,16 @@ async def _get_profile_structured(profile_id: int, db_session: AsyncSession, use
     return {
         "full_name": profile.full_name,
         "email": profile.email or "",
+        "phone": profile.phone or "",
+        "location": ", ".join(p for p in [
+            (profile.parsed_resume_v1 or {}).get("resume", {}).get("personal_info", {}).get("location", {}).get("city", "") if profile.parsed_resume_v1 else "",
+            (profile.parsed_resume_v1 or {}).get("resume", {}).get("personal_info", {}).get("location", {}).get("country", "") if profile.parsed_resume_v1 else "",
+        ] if p),
+        "linkedin": ((profile.parsed_resume_v1 or {}).get("resume", {}).get("personal_info", {}).get("linkedin", "")) or profile.linkedin_url or "",
+        "headline": profile.headline or "",
         "summary": profile.summary or "",
         "resume_text": profile.raw_resume_text or "",
+        "parsed_resume_v1": profile.parsed_resume_v1,
         "projects": [
             {
                 "title": p.title,
